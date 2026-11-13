@@ -24,6 +24,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Data files (protect personal data and large zip files on git)
-data/*.zip
-data/instagram-*
+# Private data & internal audit files (exclude from git)
+data/
+anti-slop/
