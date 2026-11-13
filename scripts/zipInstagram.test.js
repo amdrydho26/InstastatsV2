@@ -2,14 +2,26 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { extractInstagramZip } from '../src/zipInstagram.js'
 
-const buffer = await readFile('data/instagram-amd.rydho26-2026-07-25-B420ZcgT.zip')
-const slice = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-const result = await extractInstagramZip(slice)
+// Test JSON ZIP
+const jsonBuffer = await readFile('data/instagram-amd.rydho26-2026-11-11-pNR1KJen(JSON).zip')
+const jsonSlice = jsonBuffer.buffer.slice(jsonBuffer.byteOffset, jsonBuffer.byteOffset + jsonBuffer.byteLength)
+const jsonResult = await extractInstagramZip(jsonSlice)
 
-assert.equal(result.followersName, 'connections/followers_and_following/followers_1.json')
-assert.equal(result.followingName, 'connections/followers_and_following/following.json')
-assert.ok(result.followersText.includes('ilhmfadl_'))
-assert.ok(result.followingText.includes('relationships_following'))
-assert.ok(result.jsonCount >= 2)
+assert.equal(jsonResult.format, 'json')
+assert.equal(jsonResult.followersName, 'connections/followers_and_following/followers_1.json')
+assert.equal(jsonResult.followingName, 'connections/followers_and_following/following.json')
+assert.ok(jsonResult.followersText.includes('string_list_data'))
+assert.ok(jsonResult.followingText.includes('relationships_following'))
+
+// Test HTML ZIP
+const htmlBuffer = await readFile('data/instagram-amd.rydho26-2026-11-11-12Hj8hrk(HTML).zip')
+const htmlSlice = htmlBuffer.buffer.slice(htmlBuffer.byteOffset, htmlBuffer.byteOffset + htmlBuffer.byteLength)
+const htmlResult = await extractInstagramZip(htmlSlice)
+
+assert.equal(htmlResult.format, 'html')
+assert.equal(htmlResult.followersName, 'connections/followers_and_following/followers_1.html')
+assert.equal(htmlResult.followingName, 'connections/followers_and_following/following.html')
+assert.ok(htmlResult.followersText.includes('<a'))
+assert.ok(htmlResult.followingText.includes('<h2'))
 
 console.log('zipInstagram self-check passed')

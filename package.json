@@ -1,12 +1,14 @@
 {
   "name": "instastats-v2",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node scripts/instagramParser.test.js && node scripts/zipInstagram.test.js",
+    "generate-dummy": "node scripts/generateDummyData.js"
   },
   "dependencies": {
     "fflate": "^0.8.3",

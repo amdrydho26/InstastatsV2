@@ -1,26 +1,48 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { gsap } from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { ScrollToPlugin } from 'gsap/ScrollToPlugin'
-import { compareInstagramData } from './instagramParser.js'
+import { compareInstagramData, extractAccountsFromJson, extractAccountsFromHtml } from './instagramParser.js'
 import { extractInstagramZip } from './zipInstagram.js'
+import { AD_CONFIG } from './adConfig.js'
 
-gsap.registerPlugin(ScrollTrigger, ScrollToPlugin)
+gsap.registerPlugin(ScrollToPlugin)
 
-const inputMode = ref('zip')
+// ─── Storage & Pagination Constants ───────────────────────────────────────────
+
+const STORAGE_KEY = 'instastats_v2_saved_state'
+const PAGE_SIZE = 100
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+const inputFormat = ref('json') // 'json' | 'html'
 const zipFile = ref(null)
 const zipFileName = ref('')
-const followersText = ref('')
-const followingText = ref('')
-const followersFileName = ref('')
-const followingFileName = ref('')
-const status = ref('idle')
+const zipValid = ref(null) // null | true | false
+const zipValidating = ref(false)
+const zipError = ref('')
+
+const status = ref('idle') // idle | validating | processing | success | error
 const activeStep = ref('Menunggu file')
 const progress = ref(0)
 const errorMessage = ref('')
 const result = ref(null)
-const query = ref('')
+
+const userCredits = ref(0)
+const showAdModal = ref(false)
+const adTimeRemaining = ref(AD_CONFIG.durationSeconds)
+const adProgressPercent = ref(0)
+let adInterval = null
+
+const activeCategory = ref('notFollowBack') // notFollowBack | notFollowingBack | following | followers
+const currentPage = ref(1)
+const categoryPages = ref({
+  notFollowBack: 1,
+  notFollowingBack: 1,
+  following: 1,
+  followers: 1,
+})
+
 const showSplash = ref(true)
 
 const appRoot = ref(null)
@@ -28,60 +50,134 @@ const splash = ref(null)
 const progressFill = ref(null)
 const statusText = ref(null)
 
+// ─── Process steps ────────────────────────────────────────────────────────────
+
 const processSteps = [
   'Menunggu file',
   'File siap',
-  'Menerima file',
   'Membaca ZIP',
   'Mengekstrak isi',
-  'Mencari file JSON',
   'Membaca followers',
   'Membaca following',
   'Membandingkan data',
   'Menampilkan hasil',
 ]
 
-const guideSteps = [
-  ['01', 'Upload ZIP', 'Pilih file hasil download Instagram. Tidak perlu ekstrak manual.'],
-  ['02', 'Tekan Bandingkan', 'Aplikasi membaca ZIP dan mencari followers/following.'],
-  ['03', 'Baca hasil', 'Ringkasan dan daftar akun tampil jelas.'],
-]
+// ─── Computed ─────────────────────────────────────────────────────────────────
 
-const receivedCount = computed(() => Number(Boolean(followersText.value.trim())) + Number(Boolean(followingText.value.trim())))
+const isZipReady = computed(() => zipValid.value === true)
+const canProcess = computed(() => {
+  return isZipReady.value && status.value !== 'processing' && status.value !== 'success'
+})
 const currentStepIndex = computed(() => Math.max(0, processSteps.indexOf(activeStep.value)))
-const isZipReady = computed(() => Boolean(zipFile.value))
-const isManualReady = computed(() => receivedCount.value === 2)
-const canProcess = computed(() => status.value !== 'processing' && (inputMode.value === 'zip' ? isZipReady.value : isManualReady.value))
-const visibleAccounts = computed(() => filteredAccounts.value.slice(0, 120))
 
-const currentPanel = computed(() => {
-  if (status.value === 'processing') return 'loading'
-  if (status.value === 'error') return 'error'
-  if (!result.value) return 'empty'
-  if (!result.value.notFollowBack.length) return 'safe'
-  return 'result'
+const activeList = computed(() => {
+  if (!result.value) return []
+  const list = result.value[activeCategory.value]
+  if (!list) return []
+  return Array.isArray(list) ? list : list.accounts || []
 })
 
-const statusCopy = computed(() => {
-  if (status.value === 'processing') return ['Sedang memproses', activeStep.value]
-  if (status.value === 'success') return ['Hasil siap', 'Akun tidak follow back sudah ditemukan.']
-  if (status.value === 'error') return ['Ada masalah', errorMessage.value]
-  if (status.value === 'empty') return ['Aman', 'Tidak ada akun yang perlu ditinjau.']
-  if (inputMode.value === 'zip' && isZipReady.value) return ['ZIP siap', 'Tekan Bandingkan untuk mulai membaca isi ZIP.']
-  if (inputMode.value === 'manual' && isManualReady.value) return ['JSON siap', 'Tekan Bandingkan untuk mulai memproses data.']
-  if (inputMode.value === 'manual' && receivedCount.value === 1) return ['Satu file masuk', 'Tambahkan satu file lagi.']
-  return ['Menunggu input', inputMode.value === 'zip' ? 'Upload ZIP Instagram sebagai alur utama.' : 'Masukkan followers dan following manual.']
+const totalPages = computed(() => {
+  const len = activeList.value.length
+  return len ? Math.ceil(len / PAGE_SIZE) : 1
 })
 
-const filteredAccounts = computed(() => {
-  const text = query.value.trim().toLowerCase().replace(/^@/, '')
-  const items = result.value?.notFollowBack || []
-  return text ? items.filter((account) => account.id.includes(text)) : items
+const paginatedAccounts = computed(() => {
+  const list = activeList.value
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return list.slice(start, start + PAGE_SIZE)
 })
+
+const allPages = computed(() => {
+  return Array.from({ length: totalPages.value }, (_, i) => i + 1)
+})
+
+const categoryStats = computed(() => {
+  if (!result.value) return null
+  return {
+    notFollowBack: result.value.notFollowBack.length,
+    notFollowingBack: result.value.notFollowingBack.length,
+    following: result.value.following.accounts.length,
+    followers: result.value.followers.accounts.length,
+  }
+})
+
+const categoryLabel = computed(() => ({
+  notFollowBack: 'Tidak Follow Back Kamu',
+  notFollowingBack: 'Kamu Tidak Follow',
+  following: 'Mengikuti',
+  followers: 'Pengikut',
+}))
+
+// ─── LocalStorage Persistence ─────────────────────────────────────────────────
+
+function saveToStorage() {
+  if (!result.value || status.value !== 'success') return
+  try {
+    const totalAccounts = (categoryStats.value?.followers || 0) + (categoryStats.value?.following || 0)
+    if (totalAccounts > 25000) {
+      // Dataset benchmark besar melewati penyimpanan localStorage agar browser tetap optimal
+      return
+    }
+    const payload = {
+      result: result.value,
+      zipFileName: zipFileName.value,
+      inputFormat: inputFormat.value,
+      activeCategory: activeCategory.value,
+      currentPage: currentPage.value,
+      categoryPages: categoryPages.value,
+      userCredits: userCredits.value,
+      timestamp: Date.now(),
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  } catch (err) {
+    console.warn('Gagal menyimpan ke localStorage:', err)
+  }
+}
+
+function clearStorage() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch (err) {
+    console.warn('Gagal menghapus localStorage:', err)
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return false
+    const data = JSON.parse(raw)
+    if (!data || !data.result) return false
+
+    result.value = data.result
+    zipFileName.value = data.zipFileName || ''
+    inputFormat.value = data.inputFormat || 'json'
+    activeCategory.value = data.activeCategory || 'notFollowBack'
+    if (data.categoryPages) {
+      categoryPages.value = { ...categoryPages.value, ...data.categoryPages }
+    }
+    currentPage.value = data.currentPage || (categoryPages.value[activeCategory.value] || 1)
+    if (typeof data.userCredits === 'number') {
+      userCredits.value = data.userCredits
+    }
+    status.value = 'success'
+    zipValid.value = true
+    progress.value = 100
+    activeStep.value = 'Menampilkan hasil'
+    return true
+  } catch (err) {
+    console.warn('Gagal memuat dari localStorage:', err)
+    return false
+  }
+}
+
+// ─── Watchers ─────────────────────────────────────────────────────────────────
 
 watch(progress, (value) => {
   if (!progressFill.value) return
-  gsap.to(progressFill.value, { width: `${value}%`, duration: 0.5, ease: 'power3.out' })
+  gsap.to(progressFill.value, { width: `${value}%`, duration: 0.4, ease: 'power3.out' })
 })
 
 watch(activeStep, async () => {
@@ -89,42 +185,62 @@ watch(activeStep, async () => {
   animateStatus()
   animateTimeline()
 })
-watch(currentPanel, async () => {
+
+watch(activeCategory, async () => {
   await nextTick()
-  animatePanel()
-})
-watch(inputMode, async () => {
-  clearError()
-  result.value = null
-  query.value = ''
-  activeStep.value = isCurrentInputReady() ? 'File siap' : 'Menunggu file'
-  progress.value = isCurrentInputReady() ? 12 : 0
-  await nextTick()
-  gsap.fromTo('.mode-panel', { x: inputMode.value === 'zip' ? -18 : 18, opacity: 0, scale: 0.985 }, { x: 0, opacity: 1, scale: 1, duration: 0.36, ease: 'power3.out' })
-  gsap.fromTo('.mode-switch', { scale: 0.985 }, { scale: 1, duration: 0.24, ease: 'back.out(2)' })
-})
-watch(query, async () => {
-  await nextTick()
-  gsap.fromTo('.account-row', { x: -8, opacity: 0.65 }, { x: 0, opacity: 1, duration: 0.22, stagger: 0.012, ease: 'power2.out' })
+  gsap.fromTo('.account-row:nth-child(-n+24)', { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.22, stagger: 0.01, ease: 'power2.out' })
 })
 
+// ─── Category & Page navigation ───────────────────────────────────────────────
+
+function selectCategory(cat) {
+  if (activeCategory.value === cat) return
+  // Simpan halaman tab saat ini untuk kategori lama
+  categoryPages.value[activeCategory.value] = currentPage.value
+  activeCategory.value = cat
+  // Pulihkan halaman tab untuk kategori baru
+  currentPage.value = categoryPages.value[cat] || 1
+  saveToStorage()
+}
+
+function setPage(p) {
+  if (p < 1 || p > totalPages.value || p === currentPage.value) return
+  currentPage.value = p
+  categoryPages.value[activeCategory.value] = p
+  saveToStorage()
+  nextTick(() => {
+    gsap.fromTo('.account-row:nth-child(-n+24)', { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.22, stagger: 0.01, ease: 'power2.out' })
+    const activeBtn = document.querySelector('.page-num-btn.active')
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    }
+  })
+}
+
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
 onMounted(() => {
+  const restored = loadFromStorage()
+
   window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   if (reduceMotion) {
     showSplash.value = false
     gsap.set(appRoot.value, { opacity: 1, clearProps: 'transform' })
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    if (restored) {
+      nextTick(() => smoothScroll('#hasil'))
+    }
     return
   }
 
   gsap.set(appRoot.value, { opacity: 0 })
   gsap.timeline({ defaults: { ease: 'power3.out' } })
     .from('.splash-orb', { scale: 0, opacity: 0, duration: 0.45 })
-    .from('.splash-word span', { yPercent: 110, opacity: 0, rotate: 4, duration: 0.5, stagger: 0.035 }, '-=0.18')
+    .from('.splash-word span:not(.splash-version-tag)', { yPercent: 110, opacity: 0, rotate: 4, duration: 0.5, stagger: 0.035 }, '-=0.18')
+    .from('.splash-version-tag', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, '-=0.15')
     .from('.splash-title, .splash-progress', { y: 14, opacity: 0, duration: 0.38, stagger: 0.08 }, '-=0.2')
-    .to('.splash-progress span', { xPercent: 185, duration: 0.72, ease: 'power2.inOut' }, '-=0.15')
-    .to(splash.value, { yPercent: -100, duration: 0.55, ease: 'power4.inOut', delay: 0.1 })
+    .to('.splash-progress span', { width: '100%', duration: 0.85, ease: 'power2.inOut' }, '-=0.12')
+    .to(splash.value, { yPercent: -100, duration: 0.55, ease: 'power4.inOut', delay: 0.08 })
     .set(splash.value, { display: 'none' })
     .set(showSplash, { value: false })
     .add(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
@@ -132,134 +248,239 @@ onMounted(() => {
     .from('.hero-kicker, .hero-title, .hero-text, .hero-cta', { y: 22, opacity: 0, duration: 0.45, stagger: 0.07 }, '-=0.22')
     .from('.guide-card', { y: 18, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.08 }, '-=0.16')
     .from('.float-card', { y: 24, opacity: 0, rotate: -2, duration: 0.55, stagger: 0.08 }, '-=0.22')
-    .add(() => startAmbientMotion())
-
-  gsap.utils.toArray('.reveal').forEach((element) => {
-    gsap.from(element, {
-      y: 26,
-      opacity: 0,
-      duration: 0.65,
-      ease: 'power3.out',
-      scrollTrigger: { trigger: element, start: 'top 84%', once: true },
+    .add(() => {
+      startAmbientMotion()
+      if (restored) {
+        setTimeout(() => {
+          smoothScroll('#hasil')
+        }, 220)
+      }
     })
-  })
 })
 
-function setInputMode(mode) {
-  if (inputMode.value === mode || status.value === 'processing') return
-  inputMode.value = mode
-  press('.mode-switch')
+// ─── File handling ────────────────────────────────────────────────────
+
+function setFormat(fmt) {
+  if (inputFormat.value === fmt) return
+  inputFormat.value = fmt
+  clearFile()
+  press('.format-switch')
 }
 
-function readZip(event) {
+function clearFile() {
+  clearStorage()
+  zipFile.value = null
+  zipFileName.value = ''
+  zipValid.value = null
+  zipValidating.value = false
+  zipError.value = ''
+  result.value = null
+  status.value = 'idle'
+  activeStep.value = 'Menunggu file'
+  progress.value = 0
+  errorMessage.value = ''
+  currentPage.value = 1
+  categoryPages.value = {
+    notFollowBack: 1,
+    notFollowingBack: 1,
+    following: 1,
+    followers: 1,
+  }
+  userCredits.value = 0
+}
+
+async function readZip(event) {
   const file = event.target.files?.[0]
   if (!file) return
 
-  clearError()
+  clearStorage()
+  userCredits.value = 0
+
   if (!file.name.toLowerCase().endsWith('.zip')) {
-    setError('File harus .zip dari unduhan data Instagram.')
+    zipError.value = 'File harus berekstensi .zip dari unduhan data Instagram.'
+    zipValid.value = false
     event.target.value = ''
     return
   }
 
   zipFile.value = file
   zipFileName.value = file.name
+  zipValid.value = null
+  zipValidating.value = true
+  zipError.value = ''
   result.value = null
-  query.value = ''
-  status.value = 'idle'
-  activeStep.value = 'File siap'
-  progress.value = 12
-  nextTick(() => pulse('.zip-card'))
-}
-
-async function readFile(event, target) {
-  const file = event.target.files?.[0]
-  if (!file) return
-
-  clearError()
-  if (!file.name.toLowerCase().endsWith('.json')) {
-    setError('File harus .json. Pilih file dari unduhan data Instagram.')
-    event.target.value = ''
-    return
-  }
+  status.value = 'validating'
+  activeStep.value = 'Memeriksa ZIP'
+  progress.value = 10
 
   try {
-    const text = await file.text()
-    if (target === 'followers') {
-      followersText.value = text
-      followersFileName.value = file.name
-    } else {
-      followingText.value = text
-      followingFileName.value = file.name
+    const extracted = await extractInstagramZip(file)
+
+    const expectedFormat = inputFormat.value
+    if (extracted.format !== expectedFormat) {
+      const labelMap = { json: 'JSON', html: 'HTML' }
+      zipError.value = `ZIP berisi format ${labelMap[extracted.format]}, tapi metode yang dipilih adalah ${labelMap[expectedFormat]}. Silakan pilih format yang sesuai.`
+      zipValid.value = false
+      zipValidating.value = false
+      status.value = 'idle'
+      activeStep.value = 'Menunggu file'
+      progress.value = 0
+      return
     }
-    result.value = null
-    query.value = ''
-    activeStep.value = isManualReady.value ? 'File siap' : 'Menunggu file'
+
+    zipFile._extracted = extracted
+    zipValid.value = true
+    zipValidating.value = false
     status.value = 'idle'
-    progress.value = isManualReady.value ? 12 : 6
+    activeStep.value = 'File siap'
+    progress.value = 25
+
     await nextTick()
-    pulse(target === 'followers' ? '.followers-card' : '.following-card')
-  } catch {
-    setError(`File ${file.name} gagal dibaca. Coba pilih ulang.`)
+    pulse('.zip-upload-card')
+    setTimeout(() => {
+      smoothScroll('#bandingkan')
+    }, 450)
+  } catch (err) {
+    zipError.value = err.message
+    zipValid.value = false
+    zipValidating.value = false
+    zipFile.value = null
+    zipFileName.value = ''
+    status.value = 'idle'
+    activeStep.value = 'Menunggu file'
+    progress.value = 0
+    event.target.value = ''
   }
 }
 
-async function processData() {
-  clearError()
-  result.value = null
-  query.value = ''
+// ─── Rewarded Ad & Credit Handlers ────────────────────────────────────
 
-  if (!canProcess.value) {
-    setError(inputMode.value === 'zip' ? 'Pilih file ZIP dulu, lalu tekan Bandingkan.' : 'Masukkan followers dan following dulu, lalu tekan Bandingkan.')
+function startRewardedAd() {
+  adTimeRemaining.value = AD_CONFIG.durationSeconds
+  adProgressPercent.value = 0
+  showAdModal.value = true
+
+  if (adInterval) {
+    clearInterval(adInterval)
+  }
+
+  const total = AD_CONFIG.durationSeconds
+  adInterval = setInterval(() => {
+    if (adTimeRemaining.value > 1) {
+      adTimeRemaining.value--
+      adProgressPercent.value = Math.round(((total - adTimeRemaining.value) / total) * 100)
+    } else {
+      adTimeRemaining.value = 0
+      adProgressPercent.value = 100
+      clearInterval(adInterval)
+      adInterval = null
+    }
+  }, 1000)
+}
+
+function openAdLink() {
+  if (AD_CONFIG.directLinkUrl) {
+    window.open(AD_CONFIG.directLinkUrl, '_blank', 'noopener,noreferrer')
+  }
+}
+
+function claimRewardAndProcess() {
+  if (adTimeRemaining.value > 0) return
+  if (adInterval) {
+    clearInterval(adInterval)
+    adInterval = null
+  }
+  showAdModal.value = false
+  userCredits.value = 1
+  saveToStorage()
+  nextTick(() => {
+    processData()
+  })
+}
+
+function closeAdModal() {
+  if (adInterval) {
+    clearInterval(adInterval)
+    adInterval = null
+  }
+  showAdModal.value = false
+}
+
+function handleCompareClick() {
+  if (!canProcess.value) return
+  if (userCredits.value <= 0) {
+    startRewardedAd()
     return
+  }
+  processData()
+}
+
+// ─── Processing ───────────────────────────────────────────────────────
+
+async function processData() {
+  if (!canProcess.value) return
+  if (!zipFile._extracted) {
+    errorMessage.value = 'File belum tervalidasi. Pilih file ZIP terlebih dahulu.'
+    status.value = 'error'
+    return
+  }
+
+  // Konsumsi 1 credit untuk proses komparasi ini
+  if (userCredits.value > 0) {
+    userCredits.value--
+    saveToStorage()
   }
 
   press('.primary-button')
   status.value = 'processing'
+  errorMessage.value = ''
+  result.value = null
 
   try {
-    const compared = inputMode.value === 'zip' ? await processZipData() : await processManualData()
+    const extracted = zipFile._extracted
+
+    await runStep('Membaca ZIP', 35, 300)
+    await runStep('Mengekstrak isi', 48, 300)
+
+    await runStep('Membaca followers', 65, 320)
+    const followers = extracted.format === 'html'
+      ? extractAccountsFromHtml(extracted.followersText, 'followers')
+      : extractAccountsFromJson(JSON.parse(extracted.followersText), 'followers')
+
+    await runStep('Membaca following', 80, 320)
+    const following = extracted.format === 'html'
+      ? extractAccountsFromHtml(extracted.followingText, 'following')
+      : extractAccountsFromJson(JSON.parse(extracted.followingText), 'following')
+
+    await runStep('Membandingkan data', 92, 550)
+    const compared = compareInstagramData(followers, following)
+
+    await runStep('Menampilkan hasil', 100, 250)
     result.value = compared
-    await runStep('Menampilkan hasil', 100, 360)
-    status.value = compared.notFollowBack.length ? 'success' : 'empty'
-    nextTick(() => smoothScroll('#hasil'))
-  } catch (error) {
-    setError(error.message || 'Data gagal diproses.')
+    activeCategory.value = 'notFollowBack'
+    currentPage.value = 1
+    categoryPages.value = {
+      notFollowBack: 1,
+      notFollowingBack: 1,
+      following: 1,
+      followers: 1,
+    }
+    status.value = 'success'
+    saveToStorage()
+
+    await nextTick()
+    gsap.fromTo('#hasil',
+      { y: 80, opacity: 0.6 },
+      { y: 0, opacity: 1, duration: 0.65, ease: 'power3.out' }
+    )
+    setTimeout(() => {
+      smoothScroll('#hasil')
+    }, 140)
+  } catch (err) {
+    errorMessage.value = err.message || 'Data gagal diproses.'
+    status.value = 'error'
+    activeStep.value = 'Menunggu file'
   }
-}
-
-async function processZipData() {
-  await runStep('Menerima file', 12, 320)
-  await runStep('Membaca ZIP', 24, 460)
-  await runStep('Mengekstrak isi', 38, 420)
-  const extracted = await extractInstagramZip(zipFile.value)
-
-  await runStep('Mencari file JSON', 52, 460)
-  followersText.value = extracted.followersText
-  followingText.value = extracted.followingText
-  followersFileName.value = extracted.followersName
-  followingFileName.value = extracted.followingName
-
-  await runStep('Membaca followers', 64, 380)
-  const followersJson = parseJson(extracted.followersText, 'followers')
-
-  await runStep('Membaca following', 76, 380)
-  const followingJson = parseJson(extracted.followingText, 'following')
-
-  await runStep('Membandingkan data', 90, 780)
-  return compareInstagramData(followersJson, followingJson)
-}
-
-async function processManualData() {
-  await runStep('Menerima file', 12, 320)
-  await runStep('Membaca followers', 35, 420)
-  const followersJson = parseJson(followersText.value, 'followers')
-
-  await runStep('Membaca following', 60, 420)
-  const followingJson = parseJson(followingText.value, 'following')
-
-  await runStep('Membandingkan data', 90, 780)
-  return compareInstagramData(followersJson, followingJson)
 }
 
 async function runStep(step, value, delay) {
@@ -268,49 +489,23 @@ async function runStep(step, value, delay) {
   await wait(delay)
 }
 
-function parseJson(text, label) {
-  try {
-    return JSON.parse(text)
-  } catch (error) {
-    throw new Error(`JSON ${label} tidak valid. Detail: ${error.message}`)
-  }
-}
-
 function resetAll() {
   press('.top-action')
-  zipFile.value = null
-  zipFileName.value = ''
-  followersText.value = ''
-  followingText.value = ''
-  followersFileName.value = ''
-  followingFileName.value = ''
-  result.value = null
-  query.value = ''
-  status.value = 'idle'
-  activeStep.value = 'Menunggu file'
-  progress.value = 0
-  errorMessage.value = ''
-  nextTick(() => gsap.fromTo('.input-card, .process-card', { y: 14, opacity: 0.65 }, { y: 0, opacity: 1, duration: 0.36, stagger: 0.05, ease: 'power3.out' }))
-}
-
-function clearError() {
-  if (status.value === 'error') status.value = 'idle'
-  errorMessage.value = ''
-}
-
-function setError(message) {
-  errorMessage.value = message
-  status.value = 'error'
-  activeStep.value = 'Menunggu file'
-  progress.value = Math.max(progress.value, 8)
+  clearFile()
   nextTick(() => {
-    gsap.fromTo('.error-card, .process-card', { x: -8 }, { x: 0, duration: 0.45, ease: 'elastic.out(1, 0.55)' })
+    smoothScroll('#pilih')
+    gsap.fromTo('.zip-upload-card', { y: 14, opacity: 0.65 }, { y: 0, opacity: 1, duration: 0.36, ease: 'power3.out' })
   })
 }
 
-function isCurrentInputReady() {
-  return inputMode.value === 'zip' ? isZipReady.value : isManualReady.value
+// ─── Smooth scrolling ─────────────────────────────────────────────────
+
+function smoothScroll(target) {
+  const topOffset = window.innerWidth >= 760 ? 76 : 64
+  gsap.to(window, { duration: 0.65, scrollTo: { y: target, offsetY: topOffset }, ease: 'power3.inOut' })
 }
+
+// ─── Animations ───────────────────────────────────────────────────────
 
 function animateStatus() {
   if (!statusText.value) return
@@ -321,12 +516,6 @@ function animateStatus() {
 function animateTimeline() {
   gsap.fromTo('.timeline-step.done', { opacity: 0.72 }, { opacity: 1, duration: 0.22, stagger: 0.015, overwrite: 'auto' })
   gsap.fromTo('.timeline-step.active', { scale: 0.96, x: -4 }, { scale: 1, x: 0, duration: 0.34, ease: 'back.out(2.4)', overwrite: 'auto' })
-}
-
-function animatePanel() {
-  gsap.fromTo('.state-panel', { y: 18, opacity: 0, scale: 0.985 }, { y: 0, opacity: 1, scale: 1, duration: 0.42, ease: 'power3.out' })
-  gsap.fromTo('.summary-card', { y: 20, opacity: 0, rotate: -0.4 }, { y: 0, opacity: 1, rotate: 0, duration: 0.45, stagger: 0.07, ease: 'power3.out' })
-  gsap.fromTo('.account-row', { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: 0.34, stagger: 0.018, ease: 'power2.out' })
 }
 
 function press(selector) {
@@ -345,9 +534,7 @@ function startAmbientMotion() {
   gsap.to('.guide-card span', { y: -2, duration: 1.3, repeat: -1, yoyo: true, ease: 'sine.inOut', stagger: 0.18 })
 }
 
-function smoothScroll(target) {
-  gsap.to(window, { duration: 0.72, scrollTo: { y: target, offsetY: 86 }, ease: 'power3.inOut' })
-}
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -362,8 +549,9 @@ function formatDate(timestamp) {
 <template>
   <div v-show="showSplash" ref="splash" class="splash" aria-label="Memuat aplikasi">
     <div class="splash-orb"></div>
-    <div class="splash-word" aria-label="InstaStats">
+    <div class="splash-word" aria-label="InstaStats V2">
       <span>I</span><span>N</span><span>S</span><span>T</span><span>A</span><span>S</span><span>T</span><span>A</span><span>T</span><span>S</span><span>.</span>
+      <span class="splash-version-tag">V2</span>
     </div>
     <p class="splash-title">Menyiapkan pengalaman cek follow back.</p>
     <div class="splash-progress"><span></span></div>
@@ -371,115 +559,142 @@ function formatDate(timestamp) {
 
   <div ref="appRoot" id="app" class="app-shell">
     <header class="topbar">
-      <a class="logo" href="#app" aria-label="InstaStats" @click.prevent="smoothScroll('#app')">INSTASTATS<span>.</span></a>
-      <a class="top-link" href="#input" @click.prevent="smoothScroll('#input')">Upload</a>
+      <a class="logo" href="#app" aria-label="InstaStats V2" @click.prevent="smoothScroll('#app')">
+        INSTASTATS<span>.</span>
+        <span class="version-tag">V2</span>
+      </a>
+
+      <div class="top-nav">
+        <!-- GitHub link (clean minimal icon, no background or border) -->
+        <a class="top-icon-btn" href="https://github.com" target="_blank" rel="noopener noreferrer" aria-label="GitHub Repository" title="GitHub Repository">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+
+        <!-- TikTok link (clean minimal icon, no background or border) -->
+        <a class="top-icon-btn" href="https://tiktok.com" target="_blank" rel="noopener noreferrer" aria-label="TikTok Tutorial" title="TikTok Tutorial">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.298-.002.595.042.88.13V9.4a6.33 6.33 0 0 0-.88-.06A6.34 6.34 0 0 0 3.15 15.7a6.34 6.34 0 0 0 10.77 4.51c.36-.36.66-.77.9-1.22.25-.47.4-.98.44-1.51V8.78a8.21 8.21 0 0 0 4.33 1.36V6.69z"/>
+          </svg>
+        </a>
+      </div>
+
       <button class="top-action" type="button" @pointerdown="press('.top-action')" @click="resetAll">Reset</button>
     </header>
 
     <main>
+      <!-- ─── HERO ─────────────────────────────────────────────────────── -->
       <section class="hero grid-bg" aria-labelledby="hero-title">
         <div class="hero-copy">
           <p class="hero-kicker"><span></span> Tanpa login. Proses lokal.</p>
           <h1 id="hero-title" class="hero-title">Cek akun yang tidak <mark>follow back</mark>.</h1>
-          <p class="hero-text">Upload ZIP Instagram, tekan Bandingkan, lalu lihat akun yang tidak mengikuti balik. Semua berjalan di browser kamu.</p>
+          <p class="hero-text">Analisis followers dan following Instagram secara instan, aman, dan privat di browsermu.</p>
           <div class="guide-grid" aria-label="Cara pakai singkat">
-            <article v-for="step in guideSteps" :key="step[0]" class="guide-card">
-              <span>{{ step[0] }}</span>
-              <strong>{{ step[1] }}</strong>
-              <p>{{ step[2] }}</p>
+            <article class="guide-card">
+              <span>01</span>
+              <strong>Pilih Metode</strong>
+              <p>Pilih format JSON atau HTML lalu upload file ZIP data Instagram.</p>
+            </article>
+            <article class="guide-card">
+              <span>02</span>
+              <strong>Bandingkan</strong>
+              <p>Tekan tombol Bandingkan untuk memulai proses analisis.</p>
+            </article>
+            <article class="guide-card">
+              <span>03</span>
+              <strong>Cek Hasil</strong>
+              <p>Lihat statistik dan daftar akun berdasarkan kategori pilihan.</p>
             </article>
           </div>
-          <a class="primary-link hero-cta" href="#input" @pointerdown="press('.hero-cta')" @click.prevent="smoothScroll('#input')">Mulai cek</a>
+          <a class="primary-link hero-cta" href="#pilih" @pointerdown="press('.hero-cta')" @click.prevent="smoothScroll('#pilih')">Mulai cek</a>
         </div>
 
         <div class="hero-preview" aria-hidden="true">
           <div class="float-card card-one"><strong>ZIP</strong><span>{{ zipFileName || 'Belum dipilih' }}</span></div>
-          <div class="float-card card-two"><strong>Status</strong><span>{{ statusCopy[0] }}</span></div>
-          <div class="float-card card-three"><strong>Action</strong><span>Bandingkan saat siap</span></div>
+          <div class="float-card card-two"><strong>Status</strong><span>{{ zipValid === true ? 'Siap diproses' : (zipValid === false ? 'File salah' : 'Menunggu') }}</span></div>
+          <div class="float-card card-three"><strong>Format</strong><span>{{ inputFormat.toUpperCase() }}</span></div>
         </div>
       </section>
 
-      <section id="input" class="content-section reveal" aria-labelledby="input-title">
+      <!-- ─── SECTION 01 — PILIH METODE ───────────────────────────────── -->
+      <section id="pilih" class="content-section" aria-labelledby="pilih-title">
         <div class="section-heading">
           <span>01</span>
-          <h2 id="input-title">Pilih metode</h2>
-          <p>ZIP jadi alur utama. Input manual tetap ada untuk cadangan.</p>
+          <h2 id="pilih-title">Pilih metode</h2>
+          <p>Pilih format file data Instagram yang akan kamu gunakan.</p>
         </div>
 
         <div class="workflow-panel">
-          <div class="mode-switch" :class="inputMode" role="tablist" aria-label="Metode input">
-            <span class="mode-switch__thumb" :class="inputMode"></span>
-            <button type="button" role="tab" :aria-selected="inputMode === 'zip'" :class="{ active: inputMode === 'zip' }" @click="setInputMode('zip')">Upload ZIP</button>
-            <button type="button" role="tab" :aria-selected="inputMode === 'manual'" :class="{ active: inputMode === 'manual' }" @click="setInputMode('manual')">Manual JSON</button>
+          <!-- Format switch -->
+          <div class="format-switch" :class="inputFormat" role="tablist" aria-label="Format input">
+            <span class="format-switch__thumb" :class="inputFormat"></span>
+            <button type="button" role="tab" :aria-selected="inputFormat === 'json'" :class="{ active: inputFormat === 'json' }" @click="setFormat('json')">JSON</button>
+            <button type="button" role="tab" :aria-selected="inputFormat === 'html'" :class="{ active: inputFormat === 'html' }" @click="setFormat('html')">HTML</button>
           </div>
 
-          <Transition mode="out-in" @enter="(el, done) => gsap.fromTo(el, { y: 12, opacity: 0, scale: 0.985 }, { y: 0, opacity: 1, scale: 1, duration: 0.34, ease: 'power3.out', onComplete: done })" @leave="(el, done) => gsap.to(el, { y: -8, opacity: 0, duration: 0.2, ease: 'power2.in', onComplete: done })">
-            <div v-if="inputMode === 'zip'" key="zip" class="mode-panel">
-              <article class="input-card zip-card primary-upload" :class="{ ready: isZipReady }">
-                <div class="card-top">
-                  <div>
-                    <span class="step-chip">Metode utama</span>
-                    <h3>Upload ZIP Instagram</h3>
-                    <p>{{ zipFileName || 'Pilih file .zip hasil download data Instagram.' }}</p>
-                  </div>
-                  <span class="ready-mark">✓</span>
-                </div>
-                <label class="file-picker zip-picker">
-                  <input type="file" accept="application/zip,.zip" @change="readZip" />
-                  <span>{{ isZipReady ? 'ZIP siap diproses' : 'Pilih ZIP' }}</span>
-                </label>
-                <p class="help-note">File hanya dibaca setelah tombol Bandingkan ditekan.</p>
-              </article>
+          <!-- Upload card -->
+          <article
+            class="input-card zip-upload-card"
+            :class="[
+              `format-${inputFormat}`,
+              {
+                ready: zipValid === true,
+                error: zipValid === false,
+                validating: zipValidating,
+              }
+            ]"
+          >
+            <div class="card-top">
+              <div>
+                <h3>Upload ZIP Instagram</h3>
+                <p>
+                  <template v-if="zipValidating">Memeriksa file…</template>
+                  <template v-else-if="zipValid === true">{{ zipFileName }}</template>
+                  <template v-else-if="zipValid === false">{{ zipError }}</template>
+                  <template v-else>Pilih file .zip hasil download data Instagram.</template>
+                </p>
+              </div>
+              <span class="ready-mark" :class="{ visible: zipValid === true }">✓</span>
             </div>
+            <label class="file-picker zip-picker">
+              <input type="file" accept="application/zip,.zip" @change="readZip" />
+              <span>
+                <template v-if="zipValidating">Memeriksa…</template>
+                <template v-else-if="zipValid === true">Ganti file ZIP</template>
+                <template v-else>Pilih ZIP</template>
+              </span>
+            </label>
+          </article>
+        </div>
+      </section>
 
-            <div v-else key="manual" class="mode-panel manual-grid">
-              <article class="input-card followers-card" :class="{ ready: followersText.trim() }">
-                <div class="card-top">
-                  <div>
-                    <span class="step-chip">Followers</span>
-                    <h3>Pengikut kamu</h3>
-                    <p>{{ followersFileName || 'followers_1.json' }}</p>
-                  </div>
-                  <span class="ready-mark">✓</span>
-                </div>
-                <label class="file-picker">
-                  <input type="file" accept="application/json,.json" @change="readFile($event, 'followers')" />
-                  <span>{{ followersText.trim() ? 'File diterima' : 'Pilih followers' }}</span>
-                </label>
-                <details>
-                  <summary>Tempel manual</summary>
-                  <textarea v-model="followersText" placeholder="Tempel JSON followers" rows="4" spellcheck="false"></textarea>
-                </details>
-              </article>
-
-              <article class="input-card following-card" :class="{ ready: followingText.trim() }">
-                <div class="card-top">
-                  <div>
-                    <span class="step-chip dark-chip">Following</span>
-                    <h3>Akun kamu ikuti</h3>
-                    <p>{{ followingFileName || 'following.json' }}</p>
-                  </div>
-                  <span class="ready-mark">✓</span>
-                </div>
-                <label class="file-picker dark-picker">
-                  <input type="file" accept="application/json,.json" @change="readFile($event, 'following')" />
-                  <span>{{ followingText.trim() ? 'File diterima' : 'Pilih following' }}</span>
-                </label>
-                <details>
-                  <summary>Tempel manual</summary>
-                  <textarea v-model="followingText" placeholder="Tempel JSON following" rows="4" spellcheck="false"></textarea>
-                </details>
-              </article>
-            </div>
-          </Transition>
+      <!-- ─── SECTION 02 — BANDINGKAN (BATAS SCROLL SEBELUM DIANALISIS) ── -->
+      <section id="bandingkan" class="content-section bandingkan-section" aria-labelledby="bandingkan-title">
+        <div class="section-heading">
+          <span>02</span>
+          <h2 id="bandingkan-title">Bandingkan</h2>
+          <p>Tekan tombol di bawah untuk memproses dan menganalisis data.</p>
         </div>
 
-        <aside class="process-card" :class="status" aria-live="polite">
+        <div class="process-card" :class="status" aria-live="polite">
           <div class="process-head">
             <div ref="statusText" class="status-copy">
               <span class="step-chip">Status</span>
-              <h3>{{ statusCopy[0] }}</h3>
-              <p>{{ statusCopy[1] }}</p>
+              <h3>
+                <template v-if="status === 'processing'">{{ activeStep }}</template>
+                <template v-else-if="status === 'success'">Selesai Dianalisis</template>
+                <template v-else-if="status === 'error'">Ada masalah</template>
+                <template v-else-if="zipValid === true">File siap dianalisis</template>
+                <template v-else>Menunggu file</template>
+              </h3>
+              <p>
+                <template v-if="status === 'processing'">Proses berjalan bertahap. Harap tunggu sebentar…</template>
+                <template v-else-if="status === 'success'">Data berhasil dibandingkan! Hasil terbuka di lapisan bawah.</template>
+                <template v-else-if="status === 'error'">{{ errorMessage }}</template>
+                <template v-else-if="zipValid === true">File sudah tervalidasi. Tekan tombol Bandingkan untuk memproses.</template>
+                <template v-else>Upload file ZIP pada bagian 01 terlebih dahulu.</template>
+              </p>
             </div>
             <div class="status-ring" :class="status"><span></span></div>
           </div>
@@ -500,82 +715,210 @@ function formatDate(timestamp) {
             </li>
           </ol>
 
-          <div class="buttons">
-            <button class="primary-button" type="button" :disabled="!canProcess" @pointerdown="press('.primary-button')" @click="processData">
-              {{ status === 'processing' ? 'Memproses...' : 'Bandingkan' }}
-            </button>
-            <button class="ghost-button" type="button" @pointerdown="press('.ghost-button')" @click="resetAll">Ulangi</button>
-          </div>
-        </aside>
+          <!-- Credit indicator & Action button -->
+          <button
+            class="primary-button"
+            type="button"
+            :disabled="!canProcess"
+            @pointerdown="press('.primary-button')"
+            @click="handleCompareClick"
+          >
+            <template v-if="status === 'processing'">Memproses…</template>
+            <template v-else-if="status === 'success'">Sudah Dianalisis ✓</template>
+            <template v-else-if="userCredits > 0">Bandingkan Sekarang (1 Credit Tersedia ✓)</template>
+            <template v-else>Tonton Iklan & Bandingkan ⚡</template>
+          </button>
+        </div>
       </section>
 
-      <section id="hasil" class="results-section reveal" aria-labelledby="hasil-title">
-        <div class="section-heading light-heading">
-          <span>02</span>
-          <h2 id="hasil-title">Hasil cek</h2>
-          <p>Ringkasan dulu. Detail akun muncul setelah proses selesai.</p>
+      <!-- ─── SECTION 03 — CEK HASIL (LAYER MUNCUL DARI BAWAH) ────────── -->
+      <section
+        v-if="result"
+        id="hasil"
+        class="content-section results-section"
+        aria-labelledby="hasil-title"
+      >
+        <div class="layer-pill-bar" aria-hidden="true">
+          <span class="layer-pill"></span>
+        </div>
+
+        <div class="section-heading">
+          <span>03</span>
+          <h2 id="hasil-title">Cek hasil</h2>
+          <p>Klik salah satu kategori di bawah untuk melihat rincian daftar akun.</p>
         </div>
 
         <div class="results-panel">
-          <Transition mode="out-in" @enter="(el, done) => gsap.fromTo(el, { y: 18, opacity: 0, scale: 0.985 }, { y: 0, opacity: 1, scale: 1, duration: 0.36, ease: 'power3.out', onComplete: done })" @leave="(el, done) => gsap.to(el, { y: -12, opacity: 0, duration: 0.22, ease: 'power2.in', onComplete: done })">
-            <div v-if="currentPanel === 'loading'" key="loading" class="state-panel loading-state" :class="{ comparing: activeStep === 'Membandingkan data' }">
-              <div class="loading-orbit"><span></span><i></i><b></b></div>
-              <strong>{{ activeStep }}</strong>
-              <p>{{ activeStep === 'Membandingkan data' ? 'Aplikasi sedang mencocokkan followers dan following.' : 'Proses berjalan bertahap. Kamu bisa melihat statusnya di atas.' }}</p>
-              <div class="compare-bars" aria-hidden="true"><span></span><span></span><span></span></div>
-              <div class="skeleton-list"><i></i><i></i><i></i></div>
-            </div>
+          <!-- Category stats: 4 cards -->
+          <div v-if="categoryStats" class="stat-grid" role="tablist" aria-label="Kategori akun">
+            <button
+              class="stat-card"
+              :class="{ active: activeCategory === 'notFollowBack' }"
+              role="tab"
+              :aria-selected="activeCategory === 'notFollowBack'"
+              @click="selectCategory('notFollowBack')"
+            >
+              <span>Tidak Follow Back Kamu</span>
+              <strong>{{ categoryStats.notFollowBack }}</strong>
+              <small>kamu ikuti, tidak ikuti balik</small>
+            </button>
 
-            <div v-else-if="currentPanel === 'error'" key="error" class="state-panel message-card error-card">
-              <strong>Data belum bisa diproses.</strong>
-              <p>{{ errorMessage }}</p>
-            </div>
+            <button
+              class="stat-card"
+              :class="{ active: activeCategory === 'notFollowingBack' }"
+              role="tab"
+              :aria-selected="activeCategory === 'notFollowingBack'"
+              @click="selectCategory('notFollowingBack')"
+            >
+              <span>Kamu Tidak Follow</span>
+              <strong>{{ categoryStats.notFollowingBack }}</strong>
+              <small>ikuti kamu, tidak kamu ikuti</small>
+            </button>
 
-            <div v-else-if="currentPanel === 'empty'" key="empty" class="state-panel message-card empty-card">
-              <strong>Belum ada hasil.</strong>
-              <p>Pilih metode input, siapkan file, lalu tekan Bandingkan.</p>
-            </div>
+            <button
+              class="stat-card"
+              :class="{ active: activeCategory === 'following' }"
+              role="tab"
+              :aria-selected="activeCategory === 'following'"
+              @click="selectCategory('following')"
+            >
+              <span>Mengikuti</span>
+              <strong>{{ categoryStats.following }}</strong>
+              <small>total akun kamu ikuti</small>
+            </button>
 
-            <div v-else-if="currentPanel === 'safe'" key="safe" class="state-panel result-content">
-              <div class="summary-grid">
-                <article class="summary-card"><span>Following</span><strong>{{ result.following.accounts.length }}</strong><small>{{ result.following.duplicateCount }} duplikat</small></article>
-                <article class="summary-card"><span>Followers</span><strong>{{ result.followers.accounts.length }}</strong><small>{{ result.followers.duplicateCount }} duplikat</small></article>
-                <article class="summary-card accent-card"><span>Tidak follow back</span><strong>0</strong><small>Aman</small></article>
+            <button
+              class="stat-card"
+              :class="{ active: activeCategory === 'followers' }"
+              role="tab"
+              :aria-selected="activeCategory === 'followers'"
+              @click="selectCategory('followers')"
+            >
+              <span>Pengikut</span>
+              <strong>{{ categoryStats.followers }}</strong>
+              <small>total pengikut kamu</small>
+            </button>
+          </div>
+
+          <!-- Active category label & count -->
+          <div class="list-header">
+            <p class="list-label">{{ categoryLabel[activeCategory] }} · <strong>{{ activeList.length }}</strong> akun</p>
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="!activeList.length" class="message-card empty-card">
+            <strong>Tidak ada akun pada kategori ini.</strong>
+            <p>Pilih kategori lain di atas untuk melihat daftar akun.</p>
+          </div>
+
+          <!-- Paginated Account list (100 per page) -->
+          <ul v-else class="account-list">
+            <li v-for="account in paginatedAccounts" :key="account.id" class="account-row">
+              <div>
+                <strong>@{{ account.id }}</strong>
+                <small>{{ formatDate(account.timestamp) }}</small>
               </div>
-              <div class="message-card success-card"><strong>Aman.</strong><p>Semua following ditemukan di followers.</p></div>
+              <a :href="account.href" target="_blank" rel="noreferrer" @pointerdown="press('.account-row a')">Buka</a>
+            </li>
+          </ul>
+
+          <!-- Pagination: Simple horizontal numbers only, scrollable if many -->
+          <nav v-if="totalPages > 1" class="simple-pagination" aria-label="Navigasi halaman akun">
+            <div class="page-numbers-track">
+              <button
+                v-for="p in allPages"
+                :key="p"
+                class="page-num-btn"
+                :class="{ active: p === currentPage }"
+                type="button"
+                :aria-current="p === currentPage ? 'page' : undefined"
+                @click="setPage(p)"
+              >
+                {{ p }}
+              </button>
             </div>
-
-            <div v-else key="result" class="state-panel result-content">
-              <div class="summary-grid">
-                <article class="summary-card"><span>Following</span><strong>{{ result.following.accounts.length }}</strong><small>{{ result.following.duplicateCount }} duplikat</small></article>
-                <article class="summary-card"><span>Followers</span><strong>{{ result.followers.accounts.length }}</strong><small>{{ result.followers.duplicateCount }} duplikat</small></article>
-                <article class="summary-card accent-card"><span>Tidak follow back</span><strong>{{ result.notFollowBack.length }}</strong><small>{{ filteredAccounts.length }} tampil</small></article>
-              </div>
-
-              <label class="search-box">
-                <span>Cari akun</span>
-                <input v-model="query" type="search" placeholder="Ketik username" />
-              </label>
-
-              <div v-if="!filteredAccounts.length" class="message-card empty-card">
-                <strong>Tidak ada yang cocok.</strong>
-                <p>Coba kata kunci lain.</p>
-              </div>
-
-              <ul v-else class="account-list">
-                <li v-for="account in visibleAccounts" :key="account.id" class="account-row">
-                  <div>
-                    <strong>@{{ account.id }}</strong>
-                    <small>{{ formatDate(account.timestamp) }}</small>
-                  </div>
-                  <a :href="account.href" target="_blank" rel="noreferrer" @pointerdown="press('.account-row a')">Buka</a>
-                </li>
-              </ul>
-              <p v-if="filteredAccounts.length > visibleAccounts.length" class="limit-note">Menampilkan 120 akun pertama agar tetap ringan.</p>
-            </div>
-          </Transition>
+            <small class="pagination-subtext">Halaman {{ currentPage }} dari {{ totalPages }}</small>
+          </nav>
         </div>
       </section>
     </main>
+
+    <!-- ─── REWARDED AD MODAL (MONETIZATION) ───────────────────────────── -->
+    <Teleport to="body">
+      <div v-if="showAdModal" class="ad-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ad-modal-title">
+        <div class="ad-modal-card">
+          <div class="ad-modal-header">
+            <span class="ad-badge">Sponsor / Iklan</span>
+            <span class="ad-timer" :class="{ ready: adTimeRemaining === 0 }">
+              <template v-if="adTimeRemaining > 0">⏱ {{ adTimeRemaining }}s</template>
+              <template v-else>Reward Siap! ✓</template>
+            </span>
+          </div>
+
+          <h3 id="ad-modal-title" class="ad-title">
+            <template v-if="adTimeRemaining > 0">Tonton Iklan untuk Mendapatkan Credit</template>
+            <template v-else>Credit Siap Digunakan!</template>
+          </h3>
+          <p class="ad-desc">
+            <template v-if="adTimeRemaining > 0">
+              Dukung layanan gratis InstaStats dengan melihat sponsor selama {{ AD_CONFIG.durationSeconds }} detik untuk membuka 1x analisis perbandingan.
+            </template>
+            <template v-else>
+              Terima kasih telah mendukung kami! 1 Credit telah siap untuk memulai analisis data akun Instagram kamu.
+            </template>
+          </p>
+
+          <!-- Interactive Ad Box (Monetag / Partner) -->
+          <div class="ad-content-box" @click="openAdLink">
+            <div class="ad-content-inner">
+              <div class="ad-icon-wrap">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/>
+                </svg>
+              </div>
+              <div class="ad-copy">
+                <strong>{{ AD_CONFIG.providerName }} Sponsored Offer</strong>
+                <span>Klik di sini untuk melihat penawaran sponsor terbaru</span>
+              </div>
+              <span class="ad-visit-btn">Buka Sponsor ↗</span>
+            </div>
+          </div>
+
+          <!-- Countdown Progress Bar -->
+          <div class="ad-progress-bar" aria-label="Progress menonton iklan">
+            <div class="ad-progress-fill" :style="{ width: `${adProgressPercent}%` }"></div>
+          </div>
+
+          <!-- Actions -->
+          <div class="ad-modal-actions">
+            <button
+              v-if="adTimeRemaining > 0"
+              class="ad-action-btn disabled"
+              type="button"
+              disabled
+            >
+              Menunggu Reward ({{ adTimeRemaining }}s)...
+            </button>
+            <button
+              v-else
+              class="ad-action-btn claim-btn"
+              type="button"
+              @click="claimRewardAndProcess"
+            >
+              Klaim 1 Credit & Mulai Analisis ⚡
+            </button>
+
+            <button
+              v-if="adTimeRemaining > 0"
+              class="ad-cancel-btn"
+              type="button"
+              @click="closeAdModal"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

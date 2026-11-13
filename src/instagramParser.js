@@ -21,7 +21,9 @@ export function normalizeUsername(value) {
   return USERNAME_RE.test(text) ? text : ''
 }
 
-export function extractAccounts(input, kind) {
+// ─── JSON format parser ───────────────────────────────────────────────────────
+
+export function extractAccountsFromJson(input, kind) {
   const arrays = findAccountArrays(input, kind)
   const byId = new Map()
   let rawCount = 0
@@ -30,7 +32,7 @@ export function extractAccounts(input, kind) {
     if (!Array.isArray(list)) continue
 
     for (const item of list) {
-      const accounts = accountCandidates(item)
+      const accounts = accountCandidatesJson(item)
       rawCount += accounts.length
 
       for (const account of accounts) {
@@ -53,6 +55,139 @@ export function extractAccounts(input, kind) {
     duplicateCount: Math.max(0, rawCount - byId.size),
   }
 }
+
+/** Legacy alias — still works for callers that pass already-parsed JSON */
+export const extractAccounts = extractAccountsFromJson
+
+// ─── HTML format parser ───────────────────────────────────────────────────────
+
+/**
+ * Parse Instagram HTML export.
+ * followers_1.html: each account is <a target="_blank" href="...">username</a>
+ *   inside <div class="pam _3-95 _2ph- _a6-g uiBoxWhite noborder">
+ * following.html: each account is <h2 class="...">username</h2>
+ *   plus <a target="_blank" href="...">url</a> inside the same container
+ */
+export function extractAccountsFromHtml(html, kind) {
+  const byId = new Map()
+  let rawCount = 0
+
+  if (kind === 'followers') {
+    // followers_1.html: <div class="pam ..."><div class="_a6-p"><div><div><a href="...">username</a></div>...
+    // Each entry block contains exactly one <a> with the profile href
+    const entryRe = /<div class="pam[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g
+    const linkRe = /<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/
+    const dateRe = /<div>([A-Za-z]{3} \d{1,2}, \d{4} [^<]+)<\/div>/
+
+    let m
+    while ((m = entryRe.exec(html)) !== null) {
+      rawCount++
+      const block = m[1]
+      const linkMatch = linkRe.exec(block)
+      if (!linkMatch) continue
+      const href = linkMatch[1].trim()
+      const textVal = linkMatch[2].trim()
+      const id = normalizeUsername(href) || normalizeUsername(textVal)
+      if (!id || byId.has(id)) continue
+      const dateMatch = dateRe.exec(block)
+      byId.set(id, {
+        id,
+        username: textVal || id,
+        href: normalizeHref(href, id),
+        timestamp: dateMatch ? parseFbDate(dateMatch[1]) : null,
+      })
+    }
+  } else {
+    // following.html: <div class="pam ..."><h2 class="...">username</h2><div class="_a6-p"><div><div><a href="...">...</a></div><div>date</div>
+    const entryRe = /<div class="pam[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g
+    const h2Re = /<h2[^>]*>([^<]+)<\/h2>/
+    const linkRe = /<a[^>]+href="([^"]+)"/
+    const dateRe = /<div>([A-Za-z]{3} \d{1,2}, \d{4} [^<]+)<\/div>/
+
+    let m
+    while ((m = entryRe.exec(html)) !== null) {
+      rawCount++
+      const block = m[1]
+      const h2Match = h2Re.exec(block)
+      const linkMatch = linkRe.exec(block)
+      if (!h2Match && !linkMatch) continue
+      const textVal = h2Match?.[1]?.trim() || ''
+      const href = linkMatch?.[1]?.trim() || ''
+      const id = normalizeUsername(textVal) || normalizeUsername(href)
+      if (!id || byId.has(id)) continue
+      const dateMatch = dateRe.exec(block)
+      byId.set(id, {
+        id,
+        username: textVal || id,
+        href: normalizeHref(href, id),
+        timestamp: dateMatch ? parseFbDate(dateMatch[1]) : null,
+      })
+    }
+  }
+
+  return {
+    accounts: [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)),
+    rawCount,
+    duplicateCount: Math.max(0, rawCount - byId.size),
+  }
+}
+
+/**
+ * Parse a date string like "Nov 03, 2026 11:57 pm" into a Unix timestamp.
+ * Returns null when parsing fails.
+ */
+function parseFbDate(str) {
+  if (!str) return null
+  try {
+    const d = new Date(str.trim())
+    if (isNaN(d.getTime())) return null
+    return Math.floor(d.getTime() / 1000)
+  } catch {
+    return null
+  }
+}
+
+// ─── Compare ─────────────────────────────────────────────────────────────────
+
+/**
+ * Compare followers and following data.
+ * Returns { followers, following, notFollowBack, notFollowingBack }
+ *   notFollowBack     — accounts you follow but they don't follow you back
+ *   notFollowingBack  — accounts that follow you but you don't follow them back
+ */
+export function compareInstagramData(followersData, followingData) {
+  // Accept either { accounts } objects or raw inputs
+  const followers = followersData.accounts
+    ? followersData
+    : extractAccountsFromJson(followersData, 'followers')
+
+  const following = followingData.accounts
+    ? followingData
+    : extractAccountsFromJson(followingData, 'following')
+
+  if (!followers.accounts.length) {
+    throw new Error('Daftar followers tidak ditemukan. Pastikan file followers berisi data yang benar.')
+  }
+
+  if (!following.accounts.length) {
+    throw new Error('Daftar following tidak ditemukan. Pastikan file following berisi data yang benar.')
+  }
+
+  const followerIds = new Set(followers.accounts.map((a) => a.id))
+  const followingIds = new Set(following.accounts.map((a) => a.id))
+
+  const notFollowBack = following.accounts.filter((a) => !followerIds.has(a.id))
+  const notFollowingBack = followers.accounts.filter((a) => !followingIds.has(a.id))
+
+  return {
+    followers,
+    following,
+    notFollowBack,
+    notFollowingBack,
+  }
+}
+
+// ─── JSON parsing internals ───────────────────────────────────────────────────
 
 function findAccountArrays(input, kind) {
   const found = []
@@ -93,7 +228,7 @@ function uniqueArrays(arrays) {
   })
 }
 
-function accountCandidates(item) {
+function accountCandidatesJson(item) {
   const candidates = []
   if (!item || typeof item !== 'object') {
     const username = normalizeUsername(item)
@@ -136,26 +271,4 @@ function normalizeHref(href, username) {
 
 function cleanText(value) {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-export function compareInstagramData(followersInput, followingInput) {
-  const followers = extractAccounts(followersInput, 'followers')
-  const following = extractAccounts(followingInput, 'following')
-
-  if (!followers.accounts.length) {
-    throw new Error('Daftar followers tidak ditemukan. Pastikan file followers berisi array atau key "followers" / "relationships_followers".')
-  }
-
-  if (!following.accounts.length) {
-    throw new Error('Daftar following tidak ditemukan. Pastikan file following berisi key "relationships_following" atau array following.')
-  }
-
-  const followerIds = new Set(followers.accounts.map((account) => account.id))
-  const notFollowBack = following.accounts.filter((account) => !followerIds.has(account.id))
-
-  return {
-    followers,
-    following,
-    notFollowBack,
-  }
 }
