@@ -640,6 +640,15 @@ mark::before { position: absolute; inset: 58% -4% 5%; z-index: -1; display: bloc
 
 /* ─── Rewarded Ad Modal ──────────────────────────────────────────────────── */
 
+/* Pastikan elemen iklan In-Page Push Monetag selalu muncul di lapisan paling depan */
+[class*="monetag"],
+[id*="monetag"],
+[class*="ipp-"],
+[class*="in-page-push"],
+[id*="zone_"] {
+  z-index: 2147483647 !important;
+}
+
 .ad-modal-backdrop {
   position: fixed;
   inset: 0;
