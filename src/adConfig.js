@@ -1,28 +1,27 @@
 /**
- * Konfigurasi Jaringan Iklan / Rewarded Ads
- * Provider rekomendasi: Monetag (PropellerAds)
+ * Konfigurasi Jaringan Iklan / In-Page Rewarded Ads
+ * Provider: Monetag (PropellerAds)
+ * Format: In-Page Vignette Banner (Zone: 12252049)
  *
- * Monetag adalah penyedia iklan yang paling simpel, aman, tanpa minimum traffic,
- * dan langsung aktif seketika tanpa proses approval website yang rumit.
+ * Iklan tampil langsung di dalam layar web tanpa berpindah halaman / tanpa buka tab baru.
+ * Setelah durasi countdown selesai, pengguna otomatis mendapatkan credit dan memproses data.
  */
 export const AD_CONFIG = {
   // Nama provider yang digunakan
   providerName: 'Monetag',
 
-  // Durasi menonton iklan sebelum mendapatkan reward credit (detik)
+  // Format iklan
+  format: 'Vignette In-Page Banner',
+
+  // Zone ID resmi Monetag
+  zoneId: '12252049',
+
+  // Durasi hitung mundur menonton iklan di web (detik)
   durationSeconds: 8,
 
-  // URL Direct Link / Smartlink Monetag Anda
-  // Cara dapatkan link:
-  // 1. Daftar akun gratis di https://monetag.com
-  // 2. Buat zona format "Direct Link"
-  // 3. Salin link tersebut dan tempelkan di bawah ini:
-  directLinkUrl: 'https://monetag.com',
-
-  // Apakah otomatis langsung memproses data setelah iklan selesai
+  // Apakah otomatis langsung memproses data setelah iklan/durasi selesai
   autoStartOnReward: true,
 
-  // Mode simulasi/demo aktif (bisa langsung berfungsi sekarang)
-  testMode: true,
+  // Mode live (false = aktif menggunakan Monetag SDK di web)
+  testMode: false,
 }
-

@@ -790,6 +790,44 @@ mark::before { position: absolute; inset: 58% -4% 5%; z-index: -1; display: bloc
   white-space: nowrap;
 }
 
+.ad-content-box.in-page-mode {
+  cursor: default;
+}
+.ad-content-box.in-page-mode:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.ad-live-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--yellow);
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(255, 225, 124, 0.12);
+  border: 1px solid rgba(255, 225, 124, 0.28);
+  white-space: nowrap;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2fbf71;
+  box-shadow: 0 0 8px #2fbf71;
+  animation: livePulse 1.2s infinite ease-in-out;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
 .ad-progress-bar {
   position: relative;
   height: 6px;

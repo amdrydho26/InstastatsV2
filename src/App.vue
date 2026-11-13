@@ -374,14 +374,17 @@ function startRewardedAd() {
       adProgressPercent.value = 100
       clearInterval(adInterval)
       adInterval = null
+      if (AD_CONFIG.autoStartOnReward) {
+        setTimeout(() => {
+          claimRewardAndProcess()
+        }, 400)
+      }
     }
   }, 1000)
 }
 
 function openAdLink() {
-  if (AD_CONFIG.directLinkUrl) {
-    window.open(AD_CONFIG.directLinkUrl, '_blank', 'noopener,noreferrer')
-  }
+  // Mode In-Page: tetap berada di dalam halaman web tanpa membuka tab baru
 }
 
 function claimRewardAndProcess() {
@@ -856,31 +859,34 @@ function formatDate(timestamp) {
           </div>
 
           <h3 id="ad-modal-title" class="ad-title">
-            <template v-if="adTimeRemaining > 0">Tonton Iklan untuk Mendapatkan Credit</template>
-            <template v-else>Credit Siap Digunakan!</template>
+            <template v-if="adTimeRemaining > 0">Tonton Iklan Singkat di Layar</template>
+            <template v-else>Reward Selesai!</template>
           </h3>
           <p class="ad-desc">
             <template v-if="adTimeRemaining > 0">
-              Dukung layanan gratis InstaStats dengan melihat sponsor selama {{ AD_CONFIG.durationSeconds }} detik untuk membuka 1x analisis perbandingan.
+              Mohon tunggu {{ adTimeRemaining }} detik di halaman ini untuk membuka 1x perbandingan data akun.
             </template>
             <template v-else>
-              Terima kasih telah mendukung kami! 1 Credit telah siap untuk memulai analisis data akun Instagram kamu.
+              Credit berhasil didapatkan! Memulai proses perbandingan akun...
             </template>
           </p>
 
-          <!-- Interactive Ad Box (Monetag / Partner) -->
-          <div class="ad-content-box" @click="openAdLink">
+          <!-- In-Page Ad Showcase (Monetag Vignette Banner) -->
+          <div class="ad-content-box in-page-mode">
             <div class="ad-content-inner">
               <div class="ad-icon-wrap">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/>
                 </svg>
               </div>
               <div class="ad-copy">
-                <strong>{{ AD_CONFIG.providerName }} Sponsored Offer</strong>
-                <span>Klik di sini untuk melihat penawaran sponsor terbaru</span>
+                <strong>{{ AD_CONFIG.providerName }} In-Page Sponsor</strong>
+                <span>Iklan tampil langsung di web ini. Menunggu reward selesai...</span>
               </div>
-              <span class="ad-visit-btn">Buka Sponsor ↗</span>
+              <span class="ad-live-pill" aria-label="Status iklan tayang">
+                <span class="live-dot"></span>
+                TAYANG
+              </span>
             </div>
           </div>
 
