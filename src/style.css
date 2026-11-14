@@ -761,6 +761,95 @@ mark::before { position: absolute; inset: 58% -4% 5%; z-index: -1; display: bloc
   color: rgba(255, 255, 255, 0.82);
 }
 
+.sponsor-creative-card {
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 225, 124, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 225, 124, 0.25);
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+  text-align: left;
+}
+
+.sponsor-creative-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sponsor-creative-badge {
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: var(--charcoal);
+  background: var(--yellow);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.sponsor-creative-verified {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2fbf71;
+}
+
+.sponsor-creative-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sponsor-creative-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 225, 124, 0.15);
+  border: 1px solid rgba(255, 225, 124, 0.3);
+  color: var(--yellow);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.sponsor-creative-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sponsor-creative-info strong {
+  font-size: 0.92rem;
+  color: var(--white);
+  line-height: 1.25;
+}
+
+.sponsor-creative-info p {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--dark-muted);
+  line-height: 1.35;
+}
+
+.sponsor-creative-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 225, 124, 0.15);
+  border: 1px solid rgba(255, 225, 124, 0.3);
+  color: var(--yellow);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-decoration: none;
+  transition: all 180ms ease;
+}
+
+.sponsor-creative-btn:hover {
+  background: var(--yellow);
+  color: var(--charcoal);
+}
+
 .ad-status-box {
   display: flex;
   align-items: center;

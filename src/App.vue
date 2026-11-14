@@ -923,16 +923,34 @@ function formatDate(timestamp) {
             </p>
           </div>
 
-          <!-- In-Page Ad Status Box -->
-          <div v-else class="ad-status-box">
-            <div class="ad-status-indicator">
-              <span class="ad-pulse-ring"></span>
-              <span class="ad-pulse-core"></span>
+          <!-- Real Visual Sponsor Showcase -->
+          <div v-else class="sponsor-creative-card">
+            <div class="sponsor-creative-top">
+              <span class="sponsor-creative-badge">SPONSOR RESMI MONETAG</span>
+              <span class="sponsor-creative-verified">✓ Partner Terverifikasi</span>
             </div>
-            <div class="ad-status-text">
-              <strong>Monetag Vignette Banner (Zone 12252049)</strong>
-              <span>Menyiapkan materi sponsor resmi Monetag di layar...</span>
+
+            <div class="sponsor-creative-body">
+              <div class="sponsor-creative-icon">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+              </div>
+              <div class="sponsor-creative-info">
+                <strong>Penawaran Eksklusif Pengguna InstaStats</strong>
+                <p>Tonton materi sponsor selama {{ adTimeRemaining || 8 }} detik untuk membuka 1 kredit analisis secara instan.</p>
+              </div>
             </div>
+
+            <a
+              v-if="AD_CONFIG.directLinkUrl && AD_CONFIG.directLinkUrl !== 'https://monetag.com'"
+              class="sponsor-creative-btn"
+              :href="AD_CONFIG.directLinkUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Lihat Penawaran Sponsor ↗
+            </a>
           </div>
 
           <!-- Progress Bar -->
