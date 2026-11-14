@@ -1032,137 +1032,100 @@ function formatDate(timestamp) {
       </section>
     </main>
 
-    <!-- ─── REWARDED AD MODAL (SOLUSI A: MONETAG DIRECT ADS) ────────────── -->
+    <!-- ─── REWARDED AD MODAL (CLEAN & MINIMAL) ────────────────────────── -->
     <Teleport to="body">
       <div
         v-if="showAdModal"
-        class="ad-modal-backdrop"
+        class="clean-modal-backdrop"
         role="dialog"
         aria-modal="true"
         aria-labelledby="ad-modal-title"
       >
-        <div class="ad-modal-card">
-          <div class="ad-modal-header">
-            <span class="ad-badge">SPONSOR RESMI MONETAG</span>
-            <span class="ad-timer" :class="{ ready: adTimeRemaining === 0 }">
-              <template v-if="adTimeRemaining > 0">⏱ {{ adTimeRemaining }}s</template>
-              <template v-else>Reward Siap! ✓</template>
-            </span>
+        <div class="clean-modal-card">
+          <div class="clean-modal-head">
+            <h3 id="ad-modal-title" class="clean-modal-title">
+              {{ adTimeRemaining > 0 ? 'Menunggu Sponsor' : 'Akses Terbuka' }}
+            </h3>
+            <span class="clean-modal-counter">{{ adTimeRemaining > 0 ? `${adTimeRemaining}s` : 'Siap' }}</span>
           </div>
 
-          <h3 id="ad-modal-title" class="ad-title">
-            <template v-if="adTimeRemaining > 0">Membuka Materi Sponsor</template>
-            <template v-else>Durasi Selesai! Credit Siap Digunakan</template>
-          </h3>
-
-          <p class="ad-desc">
-            <template v-if="adTimeRemaining > 0">
-              Tab iklan sponsor resmi Monetag telah dibuka. Mohon tunggu {{ adTimeRemaining }} detik untuk membuka 1x analisis perbandingan followers & following secara gratis.
-            </template>
-            <template v-else>
-              Terima kasih! 1 Credit telah berhasil diperoleh. Memulai analisis akun...
-            </template>
+          <p class="clean-modal-desc">
+            {{ adTimeRemaining > 0
+              ? 'Tab sponsor telah dibuka di halaman baru. Tunggu hitung mundur selesai untuk melanjutkan perbandingan akun secara gratis.'
+              : 'Terima kasih telah menunggu. Memulai analisis followers dan following...' }}
           </p>
 
-          <!-- Direct Link Sponsor Showcase -->
-          <div class="sponsor-creative-card">
-            <div class="sponsor-creative-top">
-              <span class="sponsor-creative-badge">MONETAG DIRECT ADS</span>
-              <span class="sponsor-creative-verified">✓ Partner Terverifikasi</span>
-            </div>
-
-            <div class="sponsor-creative-body">
-              <div class="sponsor-creative-icon">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-              </div>
-              <div class="sponsor-creative-info">
-                <strong>Halaman Sponsor Monetag Aktif</strong>
-                <p>Jika tab iklan belum terbuka otomatis di perangkat Anda, klik tombol di bawah untuk membukanya.</p>
-              </div>
-            </div>
-
-            <a
-              class="sponsor-creative-btn"
-              :href="AD_CONFIG.directLinkUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Buka Halaman Sponsor Monetag ↗
-            </a>
+          <div class="clean-progress-track" aria-label="Progress durasi sponsor">
+            <div class="clean-progress-bar" :style="{ width: `${adProgressPercent}%` }"></div>
           </div>
 
-          <!-- Progress Bar -->
-          <div class="ad-progress-bar" aria-label="Progress durasi iklan">
-            <div class="ad-progress-fill" :style="{ width: `${adProgressPercent}%` }"></div>
-          </div>
+          <a
+            class="clean-modal-link"
+            :href="AD_CONFIG.directLinkUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Tab sponsor belum terbuka? Klik di sini ↗
+          </a>
 
-          <!-- Actions -->
-          <div class="ad-modal-actions">
+          <div class="clean-modal-actions">
             <button
-              v-if="adTimeRemaining > 0"
-              class="ad-action-btn disabled"
-              type="button"
-              disabled
-            >
-              Menunggu Reward ({{ adTimeRemaining }}s)...
-            </button>
-            <button
-              v-else
-              class="ad-action-btn claim-btn"
-              type="button"
-              @click="claimRewardAndProcess"
-            >
-              Klaim 1 Credit & Mulai Analisis ⚡
-            </button>
-
-            <button
-              v-if="adTimeRemaining > 0"
-              class="ad-cancel-btn"
+              class="clean-btn clean-btn-ghost"
               type="button"
               @click="closeAdModal"
             >
               Batal
+            </button>
+            <button
+              v-if="adTimeRemaining > 0"
+              class="clean-btn clean-btn-disabled"
+              type="button"
+              disabled
+            >
+              Menunggu ({{ adTimeRemaining }}s)
+            </button>
+            <button
+              v-else
+              class="clean-btn clean-btn-solid"
+              type="button"
+              @click="claimRewardAndProcess"
+            >
+              Mulai Analisis
             </button>
           </div>
         </div>
       </div>
     </Teleport>
 
-    <!-- ─── CONFIRM RESET MODAL ───────────────────────────────────────── -->
+    <!-- ─── CONFIRM RESET MODAL (CLEAN & MINIMAL) ───────────────────────── -->
     <Teleport to="body">
       <div
         v-if="showConfirmModal"
-        class="confirm-modal-backdrop"
+        class="clean-modal-backdrop"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"
         @click.self="cancelConfirmModal"
       >
-        <div class="confirm-modal-card">
-          <div class="confirm-modal-header">
-            <span class="confirm-modal-badge">⚠️ PERINGATAN</span>
-          </div>
-
-          <h3 id="confirm-modal-title" class="confirm-modal-title">
-            Hapus Progres Sebelumnya?
+        <div class="clean-modal-card">
+          <h3 id="confirm-modal-title" class="clean-modal-title">
+            Hapus progres sebelumnya?
           </h3>
 
-          <p class="confirm-modal-desc">
+          <p class="clean-modal-desc">
             Tindakan ini akan menghapus progress sebelumnya.
           </p>
 
-          <div class="confirm-modal-actions">
+          <div class="clean-modal-actions">
             <button
-              class="confirm-btn cancel-btn"
+              class="clean-btn clean-btn-secondary"
               type="button"
               @click="cancelConfirmModal"
             >
               Batal
             </button>
             <button
-              class="confirm-btn reset-btn"
+              class="clean-btn clean-btn-solid"
               type="button"
               @click="executeConfirmedReset"
             >
