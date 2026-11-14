@@ -32,9 +32,18 @@ const result = ref(null)
 const userCredits = ref(0)
 const showAdModal = ref(false)
 const isAdBlocked = ref(false)
+const adVideoEl = ref(null)
+const isAdMuted = ref(true)
 const adTimeRemaining = ref(AD_CONFIG.durationSeconds)
 const adProgressPercent = ref(0)
 let adInterval = null
+
+function toggleMute() {
+  isAdMuted.value = !isAdMuted.value
+  if (adVideoEl.value) {
+    adVideoEl.value.muted = isAdMuted.value
+  }
+}
 
 const activeCategory = ref('notFollowBack') // notFollowBack | notFollowingBack | following | followers
 const currentPage = ref(1)
@@ -358,19 +367,17 @@ async function readZip(event) {
 // ─── Rewarded Ad & Credit Handlers ────────────────────────────────────
 
 function startRewardedAd() {
-  if (typeof window !== 'undefined' && window.__adBlocked) {
-    isAdBlocked.value = true
-  } else {
-    // Check if scripts were blocked by testing an ad domain fetch
-    fetch('https://nap5k.com/tag.min.js', { method: 'HEAD', mode: 'no-cors' })
-      .catch(() => {
-        isAdBlocked.value = true
-      })
-  }
-
   adTimeRemaining.value = AD_CONFIG.durationSeconds
   adProgressPercent.value = 0
   showAdModal.value = true
+
+  nextTick(() => {
+    if (adVideoEl.value) {
+      adVideoEl.value.currentTime = 0
+      adVideoEl.value.muted = isAdMuted.value
+      adVideoEl.value.play().catch(() => {})
+    }
+  })
 
   if (adInterval) {
     clearInterval(adInterval)
@@ -389,14 +396,10 @@ function startRewardedAd() {
       if (AD_CONFIG.autoStartOnReward) {
         setTimeout(() => {
           claimRewardAndProcess()
-        }, 400)
+        }, 500)
       }
     }
   }, 1000)
-}
-
-function openAdLink() {
-  // Mode In-Page: tetap berada di dalam halaman web tanpa membuka tab baru
 }
 
 function claimRewardAndProcess() {
@@ -404,6 +407,9 @@ function claimRewardAndProcess() {
   if (adInterval) {
     clearInterval(adInterval)
     adInterval = null
+  }
+  if (adVideoEl.value) {
+    adVideoEl.value.pause()
   }
   showAdModal.value = false
   userCredits.value = 1
@@ -417,6 +423,9 @@ function closeAdModal() {
   if (adInterval) {
     clearInterval(adInterval)
     adInterval = null
+  }
+  if (adVideoEl.value) {
+    adVideoEl.value.pause()
   }
   showAdModal.value = false
 }
@@ -880,79 +889,100 @@ function formatDate(timestamp) {
       </section>
     </main>
 
-    <!-- ─── REWARDED AD MODAL (MONETIZATION) ───────────────────────────── -->
+    <!-- ─── FULLSCREEN REWARDED VIDEO AD OVERLAY ───────────────────────── -->
     <Teleport to="body">
-      <div v-if="showAdModal" class="ad-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ad-modal-title">
-        <div class="ad-modal-card">
-          <div class="ad-modal-header">
-            <span class="ad-badge">Sponsor / Iklan</span>
-            <span class="ad-timer" :class="{ ready: adTimeRemaining === 0 }">
-              <template v-if="adTimeRemaining > 0">⏱ {{ adTimeRemaining }}s</template>
-              <template v-else>Reward Siap! ✓</template>
-            </span>
+      <div
+        v-if="showAdModal"
+        class="fullscreen-video-ad"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Iklan Video Sponsor"
+      >
+        <!-- Background Video Player -->
+        <video
+          ref="adVideoEl"
+          class="video-ad-player"
+          :src="AD_CONFIG.videoUrl"
+          autoplay
+          playsinline
+          :muted="isAdMuted"
+          loop
+        ></video>
+
+        <!-- Scrim Gradients for contrast -->
+        <div class="video-ad-scrim-top"></div>
+        <div class="video-ad-scrim-bottom"></div>
+
+        <!-- Top Header Controls -->
+        <div class="video-ad-header">
+          <div class="video-ad-badge-group">
+            <span class="video-ad-badge">SPONSOR AD</span>
+            <span class="video-ad-provider">{{ AD_CONFIG.providerName }}</span>
           </div>
 
-          <h3 id="ad-modal-title" class="ad-title">
-            <template v-if="adTimeRemaining > 0">Tonton Iklan Singkat di Layar</template>
-            <template v-else>Reward Selesai!</template>
-          </h3>
-          <p class="ad-desc">
-            <template v-if="adTimeRemaining > 0">
-              Mohon tunggu {{ adTimeRemaining }} detik di halaman ini untuk membuka 1x perbandingan data akun.
-            </template>
-            <template v-else>
-              Credit berhasil didapatkan! Memulai proses perbandingan akun...
-            </template>
-          </p>
+          <div class="video-ad-controls-right">
+            <!-- Audio Toggle -->
+            <button
+              class="video-audio-btn"
+              type="button"
+              @click="toggleMute"
+              :aria-label="isAdMuted ? 'Nyalakan Audio' : 'Bisukan Audio'"
+            >
+              <span v-if="isAdMuted">🔇 Suara Mati</span>
+              <span v-else>🔊 Suara Aktif</span>
+            </button>
 
-          <!-- AdBlock Alert Notice -->
-          <div v-if="isAdBlocked" class="adblock-notice">
-            <div class="adblock-header">
-              <span class="adblock-icon">🛡️</span>
-              <strong>AdBlock / Pelindung Iklan Aktif</strong>
+            <!-- Countdown Pill -->
+            <div class="video-timer-pill" :class="{ ready: adTimeRemaining === 0 }">
+              <template v-if="adTimeRemaining > 0">
+                <span class="timer-dot"></span>
+                Tonton: {{ adTimeRemaining }}s
+              </template>
+              <template v-else>
+                ✓ Reward Terbuka!
+              </template>
             </div>
-            <p>
-              Browser Anda memblokir skrip iklan (<code>net::ERR_BLOCKED_BY_CLIENT</code>). Silakan nonaktifkan AdBlock, Brave Shields, atau DNS pemblokir iklan pada situs ini agar iklan sponsor dapat tampil.
-            </p>
           </div>
+        </div>
 
-          <!-- In-Page Ad Showcase (Monetag In-Page Banner) -->
-          <div v-else class="ad-content-box in-page-mode">
-            <div class="ad-content-inner">
-              <div class="ad-icon-wrap">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z"/>
-                </svg>
-              </div>
-              <div class="ad-copy">
-                <strong>{{ AD_CONFIG.providerName }} In-Page Sponsor</strong>
-                <span>Iklan tampil langsung di web ini. Menunggu reward selesai...</span>
-              </div>
-              <span class="ad-live-pill" aria-label="Status iklan tayang">
-                <span class="live-dot"></span>
-                TAYANG
-              </span>
+        <!-- Bottom Overlay Controls & Info -->
+        <div class="video-ad-footer">
+          <div class="video-ad-info-box">
+            <div class="video-ad-copy">
+              <span class="video-ad-kicker">REWARDED VIDEO SPONSOR</span>
+              <h3>Tonton Video Sampai Selesai untuk Membuka Analisis</h3>
+              <p>Dapatkan 1x credit perbandingan instan setelah durasi {{ AD_CONFIG.durationSeconds }} detik selesai.</p>
             </div>
+
+            <a
+              v-if="AD_CONFIG.directLinkUrl && AD_CONFIG.directLinkUrl !== 'https://monetag.com'"
+              class="video-sponsor-link"
+              :href="AD_CONFIG.directLinkUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Kunjungi Sponsor ↗
+            </a>
           </div>
 
-          <!-- Countdown Progress Bar -->
-          <div class="ad-progress-bar" aria-label="Progress menonton iklan">
-            <div class="ad-progress-fill" :style="{ width: `${adProgressPercent}%` }"></div>
+          <!-- Progress Bar -->
+          <div class="video-progress-bar" aria-label="Progress durasi iklan">
+            <div class="video-progress-fill" :style="{ width: `${adProgressPercent}%` }"></div>
           </div>
 
-          <!-- Actions -->
-          <div class="ad-modal-actions">
+          <!-- Action Buttons -->
+          <div class="video-ad-actions">
             <button
               v-if="adTimeRemaining > 0"
-              class="ad-action-btn disabled"
+              class="video-claim-btn disabled"
               type="button"
               disabled
             >
-              Menunggu Reward ({{ adTimeRemaining }}s)...
+              Menonton Iklan (Sisa {{ adTimeRemaining }}s)...
             </button>
             <button
               v-else
-              class="ad-action-btn claim-btn"
+              class="video-claim-btn ready"
               type="button"
               @click="claimRewardAndProcess"
             >
@@ -961,11 +991,11 @@ function formatDate(timestamp) {
 
             <button
               v-if="adTimeRemaining > 0"
-              class="ad-cancel-btn"
+              class="video-cancel-btn"
               type="button"
               @click="closeAdModal"
             >
-              Batal
+              Batal & Kembali (Tanpa Credit)
             </button>
           </div>
         </div>

@@ -1,31 +1,28 @@
 /**
- * Konfigurasi Jaringan Iklan / In-Page Rewarded Ads
- * Provider: Monetag (PropellerAds)
- * Format Utama: In-Page Push Banner (Zone: 12252177)
- * Format Sekunder: Vignette Interstitial (Zone: 12252049)
- *
- * Iklan tampil langsung di dalam layar web tanpa berpindah halaman / tanpa buka tab baru.
- * Setelah durasi countdown selesai, pengguna otomatis mendapatkan credit dan memproses data.
+ * Konfigurasi Rewarded Video Ad Overlay
+ * Fullscreen Video Ad yang tampil HANYA ketika tombol "Bandingkan" ditekan.
+ * Selama belum ditekan, website 100% bersih tanpa iklan.
  */
 export const AD_CONFIG = {
-  // Nama provider yang digunakan
+  // Nama provider sponsor
   providerName: 'Monetag',
 
-  // Format iklan aktif
-  format: 'In-Page Push Banner & Vignette',
+  // Format iklan aktif: Fullscreen Rewarded Video
+  format: 'Fullscreen Rewarded Video',
 
-  // Zone ID resmi In-Page Push Banner
-  zoneId: '12252177',
+  // URL video iklan yang diputar di fullscreen player (disajikan dari server sendiri agar bebas adblock)
+  videoUrl: '/ad-video.mp4',
 
-  // Zone ID cadangan (Vignette)
-  vignetteZoneId: '12252049',
+  // Durasi wajib menonton iklan video sebelum credit diberikan (detik)
+  durationSeconds: 10,
 
-  // Durasi hitung mundur menonton iklan di web (detik)
-  durationSeconds: 8,
-
-  // Apakah otomatis langsung memproses data setelah iklan/durasi selesai
+  // Apakah otomatis langsung memproses data setelah durasi video selesai
   autoStartOnReward: true,
 
-  // Mode live (false = aktif menggunakan Monetag SDK di web)
-  testMode: false,
+  // URL Direct Link / Smartlink Monetag (opsional jika pengguna klik banner sponsor di dalam video)
+  directLinkUrl: 'https://monetag.com',
+
+  // Zone ID resmi Monetag
+  zoneId: '12252177',
+  vignetteZoneId: '12252049',
 }
