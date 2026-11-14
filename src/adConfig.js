@@ -1,26 +1,16 @@
 /**
- * Konfigurasi Rewarded Ads
- * Menggunakan Monetag Official Rewarded Interstitial SDK
- * Zona: 12252049 (Zona Interstitial Monetag Anda)
+ * Konfigurasi Jaringan Iklan / Rewarded Ads
+ * Provider: Monetag (PropellerAds)
+ * Format: Vignette Banner (Interstitial)
+ * Zone ID: 12252049
  *
- * Iklan komersial resmi Monetag muncul HANYA ketika tombol "Bandingkan" ditekan.
- * Selama belum ditekan, website 100% bersih tanpa iklan.
+ * Iklan resmi Monetag muncul HANYA saat tombol "Bandingkan" ditekan.
+ * Sebelum ditekan, website 100% bersih tanpa iklan.
  */
 export const AD_CONFIG = {
   providerName: 'Monetag',
-  format: 'Official Monetag Rewarded Interstitial SDK',
-
-  // Zone ID resmi Interstitial Monetag Anda
+  format: 'Vignette Banner (Interstitial)',
   zoneId: '12252049',
-
-  // Durasi wajib menonton iklan (detik)
-  durationSeconds: 10,
-
-  // Fallback video jika ad server kosong
-  videoUrl: '/ad-video.mp4',
-
-  // Otomatis memproses data setelah reward selesai
+  durationSeconds: 8,
   autoStartOnReward: true,
-
-  directLinkUrl: 'https://monetag.com',
 }
