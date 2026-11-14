@@ -22,6 +22,7 @@ const zipFileName = ref('')
 const zipValid = ref(null) // null | true | false
 const zipValidating = ref(false)
 const zipError = ref('')
+const zipInput = ref(null)
 
 const status = ref('idle') // idle | validating | processing | success | error
 const activeStep = ref('Menunggu file')
@@ -35,6 +36,9 @@ const isAdBlocked = ref(false)
 const adTimeRemaining = ref(AD_CONFIG.durationSeconds)
 const adProgressPercent = ref(0)
 let adInterval = null
+
+const showConfirmModal = ref(false)
+const pendingAction = ref(null)
 
 const activeCategory = ref('notFollowBack') // notFollowBack | notFollowingBack | following | followers
 const currentPage = ref(1)
@@ -66,6 +70,11 @@ const processSteps = [
 ]
 
 // ─── Computed ─────────────────────────────────────────────────────────────────
+
+const canReset = computed(() => {
+  return !!result.value || !!zipFile.value || zipValid.value === true || userCredits.value > 0
+})
+const hasProgress = computed(() => canReset.value)
 
 const isZipReady = computed(() => zipValid.value === true)
 const canProcess = computed(() => {
@@ -219,7 +228,61 @@ function setPage(p) {
   })
 }
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// ─── Lifecycle & Splash Animation ─────────────────────────────────────────────
+
+function playSplashAnimation(onComplete) {
+  showSplash.value = true
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+
+  nextTick(() => {
+    if (!splash.value) {
+      showSplash.value = false
+      if (onComplete) onComplete()
+      return
+    }
+
+    // Reset styles on splash element and children so re-running animates properly
+    gsap.set(splash.value, { display: 'flex', yPercent: 0, opacity: 1 })
+    gsap.set('.splash-progress span', { width: '0%' })
+    if (appRoot.value) {
+      gsap.set(appRoot.value, { opacity: 0 })
+    }
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduceMotion) {
+      showSplash.value = false
+      if (appRoot.value) {
+        gsap.set(appRoot.value, { opacity: 1, clearProps: 'transform' })
+      }
+      if (onComplete) onComplete()
+      return
+    }
+
+    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
+    tl.fromTo('.splash-orb', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45 })
+      .fromTo(
+        '.splash-word span:not(.splash-version-tag)',
+        { yPercent: 110, opacity: 0, rotate: 4 },
+        { yPercent: 0, opacity: 1, rotate: 0, duration: 0.5, stagger: 0.035 },
+        '-=0.18'
+      )
+      .fromTo('.splash-version-tag', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(2)' }, '-=0.15')
+      .fromTo('.splash-title, .splash-progress', { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.38, stagger: 0.08 }, '-=0.2')
+      .to('.splash-progress span', { width: '100%', duration: 0.85, ease: 'power2.inOut' }, '-=0.12')
+      .to(splash.value, { yPercent: -100, duration: 0.55, ease: 'power4.inOut', delay: 0.08 })
+      .set(splash.value, { display: 'none' })
+      .set(showSplash, { value: false })
+      .add(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
+      .to(appRoot.value, { opacity: 1, duration: 0.42 }, '-=0.2')
+      .fromTo('.hero-kicker, .hero-title, .hero-text, .hero-cta', { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, stagger: 0.07 }, '-=0.22')
+      .fromTo('.guide-card', { y: 18, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.42, stagger: 0.08 }, '-=0.16')
+      .fromTo('.float-card', { y: 24, opacity: 0, rotate: -2 }, { y: 0, opacity: 1, rotate: 0, duration: 0.55, stagger: 0.08 }, '-=0.22')
+      .add(() => {
+        startAmbientMotion()
+        if (onComplete) onComplete()
+      })
+  })
+}
 
 onMounted(() => {
   const restored = loadFromStorage()
@@ -228,45 +291,99 @@ onMounted(() => {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   if (reduceMotion) {
     showSplash.value = false
-    gsap.set(appRoot.value, { opacity: 1, clearProps: 'transform' })
+    if (appRoot.value) {
+      gsap.set(appRoot.value, { opacity: 1, clearProps: 'transform' })
+    }
     if (restored) {
       nextTick(() => smoothScroll('#hasil'))
     }
     return
   }
 
-  gsap.set(appRoot.value, { opacity: 0 })
-  gsap.timeline({ defaults: { ease: 'power3.out' } })
-    .from('.splash-orb', { scale: 0, opacity: 0, duration: 0.45 })
-    .from('.splash-word span:not(.splash-version-tag)', { yPercent: 110, opacity: 0, rotate: 4, duration: 0.5, stagger: 0.035 }, '-=0.18')
-    .from('.splash-version-tag', { scale: 0, opacity: 0, duration: 0.35, ease: 'back.out(2)' }, '-=0.15')
-    .from('.splash-title, .splash-progress', { y: 14, opacity: 0, duration: 0.38, stagger: 0.08 }, '-=0.2')
-    .to('.splash-progress span', { width: '100%', duration: 0.85, ease: 'power2.inOut' }, '-=0.12')
-    .to(splash.value, { yPercent: -100, duration: 0.55, ease: 'power4.inOut', delay: 0.08 })
-    .set(splash.value, { display: 'none' })
-    .set(showSplash, { value: false })
-    .add(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
-    .to(appRoot.value, { opacity: 1, duration: 0.42 }, '-=0.2')
-    .from('.hero-kicker, .hero-title, .hero-text, .hero-cta', { y: 22, opacity: 0, duration: 0.45, stagger: 0.07 }, '-=0.22')
-    .from('.guide-card', { y: 18, opacity: 0, scale: 0.96, duration: 0.42, stagger: 0.08 }, '-=0.16')
-    .from('.float-card', { y: 24, opacity: 0, rotate: -2, duration: 0.55, stagger: 0.08 }, '-=0.22')
-    .add(() => {
-      startAmbientMotion()
-      if (restored) {
-        setTimeout(() => {
-          smoothScroll('#hasil')
-        }, 220)
-      }
-    })
+  playSplashAnimation(() => {
+    if (restored) {
+      setTimeout(() => {
+        smoothScroll('#hasil')
+      }, 220)
+    }
+  })
 })
 
-// ─── File handling ────────────────────────────────────────────────────
+// ─── File handling & Confirmation ─────────────────────────────────────────────
+
+function promptResetConfirmation(type, payload = null) {
+  pendingAction.value = { type, payload }
+  showConfirmModal.value = true
+}
+
+function cancelConfirmModal() {
+  showConfirmModal.value = false
+  pendingAction.value = null
+}
+
+function executeConfirmedReset() {
+  const action = pendingAction.value
+  showConfirmModal.value = false
+  pendingAction.value = null
+
+  if (!action) {
+    resetAll()
+    return
+  }
+
+  if (action.type === 'switchFormat') {
+    clearFile()
+    inputFormat.value = action.payload
+    press('.format-switch')
+    playSplashAnimation()
+  } else if (action.type === 'changeFile') {
+    clearFile()
+    playSplashAnimation(() => {
+      nextTick(() => {
+        triggerFileInput()
+      })
+    })
+  } else {
+    resetAll()
+  }
+}
+
+function requestSetFormat(fmt) {
+  if (inputFormat.value === fmt) return
+  if (hasProgress.value) {
+    promptResetConfirmation('switchFormat', fmt)
+    return
+  }
+  setFormat(fmt)
+}
 
 function setFormat(fmt) {
   if (inputFormat.value === fmt) return
   inputFormat.value = fmt
   clearFile()
   press('.format-switch')
+}
+
+function triggerFileInput() {
+  if (zipInput.value) {
+    zipInput.value.click()
+  }
+}
+
+function handleFilePickerClick(event) {
+  if (hasProgress.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    promptResetConfirmation('changeFile')
+  }
+}
+
+function handleFileInputClick(event) {
+  if (hasProgress.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    promptResetConfirmation('changeFile')
+  }
 }
 
 function clearFile() {
@@ -289,6 +406,9 @@ function clearFile() {
     followers: 1,
   }
   userCredits.value = 0
+  if (zipInput.value) {
+    zipInput.value.value = ''
+  }
 }
 
 async function readZip(event) {
@@ -508,9 +628,8 @@ async function runStep(step, value, delay) {
 function resetAll() {
   press('.top-action')
   clearFile()
-  nextTick(() => {
-    smoothScroll('#pilih')
-    gsap.fromTo('.zip-upload-card', { y: 14, opacity: 0.65 }, { y: 0, opacity: 1, duration: 0.36, ease: 'power3.out' })
+  playSplashAnimation(() => {
+    startAmbientMotion()
   })
 }
 
@@ -602,23 +721,34 @@ function formatDate(timestamp) {
         <span class="version-tag">V2</span>
       </a>
 
-      <div class="top-nav">
-        <!-- GitHub link (clean minimal icon, no background or border) -->
-        <a class="top-icon-btn" href="https://github.com" target="_blank" rel="noopener noreferrer" aria-label="GitHub Repository" title="GitHub Repository">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-          </svg>
-        </a>
+      <div class="topbar-actions">
+        <div class="top-socials">
+          <!-- GitHub link (clean minimal icon, no background or border) -->
+          <a class="top-icon-btn" href="https://github.com" target="_blank" rel="noopener noreferrer" aria-label="GitHub Repository" title="GitHub Repository">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+          </a>
 
-        <!-- TikTok link (clean minimal icon, no background or border) -->
-        <a class="top-icon-btn" href="https://tiktok.com" target="_blank" rel="noopener noreferrer" aria-label="TikTok Tutorial" title="TikTok Tutorial">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.298-.002.595.042.88.13V9.4a6.33 6.33 0 0 0-.88-.06A6.34 6.34 0 0 0 3.15 15.7a6.34 6.34 0 0 0 10.77 4.51c.36-.36.66-.77.9-1.22.25-.47.4-.98.44-1.51V8.78a8.21 8.21 0 0 0 4.33 1.36V6.69z"/>
-          </svg>
-        </a>
+          <!-- TikTok link (clean minimal icon, no background or border) -->
+          <a class="top-icon-btn" href="https://tiktok.com" target="_blank" rel="noopener noreferrer" aria-label="TikTok Tutorial" title="TikTok Tutorial">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.298-.002.595.042.88.13V9.4a6.33 6.33 0 0 0-.88-.06A6.34 6.34 0 0 0 3.15 15.7a6.34 6.34 0 0 0 10.77 4.51c.36-.36.66-.77.9-1.22.25-.47.4-.98.44-1.51V8.78a8.21 8.21 0 0 0 4.33 1.36V6.69z"/>
+            </svg>
+          </a>
+        </div>
+
+        <button
+          class="top-action"
+          type="button"
+          :disabled="!canReset"
+          :aria-disabled="!canReset"
+          @pointerdown="canReset && press('.top-action')"
+          @click="canReset && resetAll()"
+        >
+          Reset
+        </button>
       </div>
-
-      <button class="top-action" type="button" @pointerdown="press('.top-action')" @click="resetAll">Reset</button>
     </header>
 
     <main>
@@ -667,8 +797,24 @@ function formatDate(timestamp) {
           <!-- Format switch -->
           <div class="format-switch" :class="inputFormat" role="tablist" aria-label="Format input">
             <span class="format-switch__thumb" :class="inputFormat"></span>
-            <button type="button" role="tab" :aria-selected="inputFormat === 'json'" :class="{ active: inputFormat === 'json' }" @click="setFormat('json')">JSON</button>
-            <button type="button" role="tab" :aria-selected="inputFormat === 'html'" :class="{ active: inputFormat === 'html' }" @click="setFormat('html')">HTML</button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="inputFormat === 'json'"
+              :class="{ active: inputFormat === 'json' }"
+              @click="requestSetFormat('json')"
+            >
+              JSON
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="inputFormat === 'html'"
+              :class="{ active: inputFormat === 'html' }"
+              @click="requestSetFormat('html')"
+            >
+              HTML
+            </button>
           </div>
 
           <!-- Upload card -->
@@ -695,8 +841,14 @@ function formatDate(timestamp) {
               </div>
               <span class="ready-mark" :class="{ visible: zipValid === true }">✓</span>
             </div>
-            <label class="file-picker zip-picker">
-              <input type="file" accept="application/zip,.zip" @change="readZip" />
+            <label class="file-picker zip-picker" @click="handleFilePickerClick">
+              <input
+                ref="zipInput"
+                type="file"
+                accept="application/zip,.zip"
+                @click="handleFileInputClick"
+                @change="readZip"
+              />
               <span>
                 <template v-if="zipValidating">Memeriksa…</template>
                 <template v-else-if="zipValid === true">Ganti file ZIP</template>
@@ -973,6 +1125,49 @@ function formatDate(timestamp) {
               @click="closeAdModal"
             >
               Batal
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ─── CONFIRM RESET MODAL ───────────────────────────────────────── -->
+    <Teleport to="body">
+      <div
+        v-if="showConfirmModal"
+        class="confirm-modal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-modal-title"
+        @click.self="cancelConfirmModal"
+      >
+        <div class="confirm-modal-card">
+          <div class="confirm-modal-header">
+            <span class="confirm-modal-badge">⚠️ PERINGATAN</span>
+          </div>
+
+          <h3 id="confirm-modal-title" class="confirm-modal-title">
+            Hapus Progres Sebelumnya?
+          </h3>
+
+          <p class="confirm-modal-desc">
+            Tindakan ini akan menghapus progress sebelumnya.
+          </p>
+
+          <div class="confirm-modal-actions">
+            <button
+              class="confirm-btn cancel-btn"
+              type="button"
+              @click="cancelConfirmModal"
+            >
+              Batal
+            </button>
+            <button
+              class="confirm-btn reset-btn"
+              type="button"
+              @click="executeConfirmedReset"
+            >
+              Reset dan Lanjutkan
             </button>
           </div>
         </div>

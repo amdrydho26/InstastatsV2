@@ -136,10 +136,16 @@ h1, h2 { font-family: var(--display); font-weight: 900; letter-spacing: 0.01em; 
   line-height: 1.2;
 }
 
-.top-nav {
+.topbar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+}
+
+.top-socials {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* GitHub & TikTok clean minimal icon links: no background or border */
@@ -178,8 +184,14 @@ h1, h2 { font-family: var(--display); font-weight: 900; letter-spacing: 0.01em; 
 }
 
 .top-action { min-height: 38px; padding: 0 16px; border: 0; color: var(--white); background: var(--charcoal); font-size: 0.88rem; }
+.top-action:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
 .primary-link, .primary-button { border: 0; color: var(--charcoal); background: var(--yellow); box-shadow: 0 16px 34px rgba(23, 30, 25, 0.12); }
-.primary-link:hover, .primary-button:hover:not(:disabled), .top-action:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.primary-link:hover, .primary-button:hover:not(:disabled), .top-action:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow); }
 .primary-button:disabled { opacity: 0.42; box-shadow: none; cursor: not-allowed; }
 .primary-link, .primary-button { width: 100%; padding: 0 20px; }
 
@@ -970,6 +982,109 @@ mark::before { position: absolute; inset: 58% -4% 5%; z-index: -1; display: bloc
 }
 .ad-cancel-btn:hover {
   color: var(--white);
+}
+
+/* ─── Confirm Reset Modal ────────────────────────────────────────────────── */
+
+.confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(10, 15, 12, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.confirm-modal-card {
+  position: relative;
+  width: min(420px, 100%);
+  border-radius: 24px;
+  background: var(--charcoal);
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 225, 124, 0.2);
+  padding: 24px 22px;
+  display: grid;
+  gap: 14px;
+  animation: modalScaleUp 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.confirm-modal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 225, 124, 0.15);
+  border: 1px solid rgba(255, 225, 124, 0.35);
+  color: var(--yellow);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.confirm-modal-title {
+  margin: 0;
+  font-size: 1.22rem;
+  font-family: var(--display);
+  letter-spacing: 0.02em;
+  color: var(--white);
+  line-height: 1.2;
+}
+
+.confirm-modal-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--dark-muted);
+}
+
+.confirm-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.confirm-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  border: 0;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease, background 180ms ease;
+  white-space: nowrap;
+}
+
+.confirm-btn.cancel-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.confirm-btn.cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.confirm-btn.reset-btn {
+  background: var(--yellow);
+  color: var(--charcoal);
+  box-shadow: 0 8px 20px rgba(255, 225, 124, 0.28);
+}
+.confirm-btn.reset-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(255, 225, 124, 0.38);
 }
 
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
