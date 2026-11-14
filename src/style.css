@@ -740,6 +740,45 @@ mark::before { position: absolute; inset: 58% -4% 5%; z-index: -1; display: bloc
   color: var(--dark-muted);
 }
 
+.adblock-notice {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 99, 99, 0.1);
+  border: 1px solid rgba(255, 99, 99, 0.32);
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+
+.adblock-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ff7b7b;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.adblock-icon {
+  font-size: 1rem;
+}
+
+.adblock-notice p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.adblock-notice code {
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #ffa1a1;
+  font-size: 0.74rem;
+}
+
 .ad-content-box {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);

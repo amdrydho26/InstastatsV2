@@ -7,6 +7,7 @@ import { extractInstagramZip } from './zipInstagram.js'
 import { AD_CONFIG } from './adConfig.js'
 
 gsap.registerPlugin(ScrollToPlugin)
+gsap.config({ nullTargetWarn: false })
 
 // ─── Storage & Pagination Constants ───────────────────────────────────────────
 
@@ -30,6 +31,7 @@ const result = ref(null)
 
 const userCredits = ref(0)
 const showAdModal = ref(false)
+const isAdBlocked = ref(false)
 const adTimeRemaining = ref(AD_CONFIG.durationSeconds)
 const adProgressPercent = ref(0)
 let adInterval = null
@@ -356,6 +358,16 @@ async function readZip(event) {
 // ─── Rewarded Ad & Credit Handlers ────────────────────────────────────
 
 function startRewardedAd() {
+  if (typeof window !== 'undefined' && window.__adBlocked) {
+    isAdBlocked.value = true
+  } else {
+    // Check if scripts were blocked by testing an ad domain fetch
+    fetch('https://nap5k.com/tag.min.js', { method: 'HEAD', mode: 'no-cors' })
+      .catch(() => {
+        isAdBlocked.value = true
+      })
+  }
+
   adTimeRemaining.value = AD_CONFIG.durationSeconds
   adProgressPercent.value = 0
   showAdModal.value = true
@@ -511,30 +523,52 @@ function smoothScroll(target) {
 // ─── Animations ───────────────────────────────────────────────────────
 
 function animateStatus() {
-  if (!statusText.value) return
-  gsap.fromTo(statusText.value, { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, ease: 'power2.out' })
-  gsap.fromTo('.status-ring', { scale: 0.9 }, { scale: 1, duration: 0.36, ease: 'back.out(2.4)' })
+  if (statusText.value) {
+    gsap.fromTo(statusText.value, { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, ease: 'power2.out' })
+  }
+  const ring = document.querySelector('.status-ring')
+  if (ring) {
+    gsap.fromTo(ring, { scale: 0.9 }, { scale: 1, duration: 0.36, ease: 'back.out(2.4)' })
+  }
 }
 
 function animateTimeline() {
-  gsap.fromTo('.timeline-step.done', { opacity: 0.72 }, { opacity: 1, duration: 0.22, stagger: 0.015, overwrite: 'auto' })
-  gsap.fromTo('.timeline-step.active', { scale: 0.96, x: -4 }, { scale: 1, x: 0, duration: 0.34, ease: 'back.out(2.4)', overwrite: 'auto' })
+  const doneElements = document.querySelectorAll('.timeline-step.done')
+  if (doneElements.length > 0) {
+    gsap.fromTo(doneElements, { opacity: 0.72 }, { opacity: 1, duration: 0.22, stagger: 0.015, overwrite: 'auto' })
+  }
+  const activeElements = document.querySelectorAll('.timeline-step.active')
+  if (activeElements.length > 0) {
+    gsap.fromTo(activeElements, { scale: 0.96, x: -4 }, { scale: 1, x: 0, duration: 0.34, ease: 'back.out(2.4)', overwrite: 'auto' })
+  }
 }
 
 function press(selector) {
-  gsap.fromTo(selector, { scale: 0.97 }, { scale: 1, duration: 0.28, ease: 'back.out(2.2)' })
+  if (!selector) return
+  const el = document.querySelector(selector)
+  if (!el) return
+  gsap.fromTo(el, { scale: 0.97 }, { scale: 1, duration: 0.28, ease: 'back.out(2.2)' })
 }
 
 function pulse(selector) {
+  if (!selector) return
+  const el = document.querySelector(selector)
+  if (!el) return
   gsap.timeline()
-    .fromTo(selector, { y: -3, scale: 0.99 }, { y: 0, scale: 1, duration: 0.32, ease: 'back.out(2)' })
+    .fromTo(el, { y: -3, scale: 0.99 }, { y: 0, scale: 1, duration: 0.32, ease: 'back.out(2)' })
     .fromTo(`${selector} .ready-mark`, { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.26, ease: 'back.out(2.8)' }, '<')
 }
 
 function startAmbientMotion() {
-  gsap.to('.hero-kicker span', { scale: 1.35, opacity: 0.55, duration: 0.9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-  gsap.to('.float-card', { y: -8, duration: 2.4, repeat: -1, yoyo: true, ease: 'sine.inOut', stagger: 0.22 })
-  gsap.to('.guide-card span', { y: -2, duration: 1.3, repeat: -1, yoyo: true, ease: 'sine.inOut', stagger: 0.18 })
+  if (document.querySelector('.hero-kicker span')) {
+    gsap.to('.hero-kicker span', { scale: 1.35, opacity: 0.55, duration: 0.9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+  }
+  if (document.querySelector('.float-card')) {
+    gsap.to('.float-card', { y: -8, duration: 2.4, repeat: -1, yoyo: true, ease: 'sine.inOut', stagger: 0.22 })
+  }
+  if (document.querySelector('.guide-card span')) {
+    gsap.to('.guide-card span', { y: -2, duration: 1.3, repeat: -1, yoyo: true, ease: 'sine.inOut', stagger: 0.18 })
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -871,8 +905,19 @@ function formatDate(timestamp) {
             </template>
           </p>
 
-          <!-- In-Page Ad Showcase (Monetag Vignette Banner) -->
-          <div class="ad-content-box in-page-mode">
+          <!-- AdBlock Alert Notice -->
+          <div v-if="isAdBlocked" class="adblock-notice">
+            <div class="adblock-header">
+              <span class="adblock-icon">🛡️</span>
+              <strong>AdBlock / Pelindung Iklan Aktif</strong>
+            </div>
+            <p>
+              Browser Anda memblokir skrip iklan (<code>net::ERR_BLOCKED_BY_CLIENT</code>). Silakan nonaktifkan AdBlock, Brave Shields, atau DNS pemblokir iklan pada situs ini agar iklan sponsor dapat tampil.
+            </p>
+          </div>
+
+          <!-- In-Page Ad Showcase (Monetag In-Page Banner) -->
+          <div v-else class="ad-content-box in-page-mode">
             <div class="ad-content-inner">
               <div class="ad-icon-wrap">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
