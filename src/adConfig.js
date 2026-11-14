@@ -1,28 +1,26 @@
 /**
- * Konfigurasi Rewarded Video Ad Overlay
- * Fullscreen Video Ad yang tampil HANYA ketika tombol "Bandingkan" ditekan.
+ * Konfigurasi Rewarded Ads
+ * Menggunakan Monetag Official Rewarded Interstitial SDK
+ * Zona: 12252049 (Zona Interstitial Monetag Anda)
+ *
+ * Iklan komersial resmi Monetag muncul HANYA ketika tombol "Bandingkan" ditekan.
  * Selama belum ditekan, website 100% bersih tanpa iklan.
  */
 export const AD_CONFIG = {
-  // Nama provider sponsor
   providerName: 'Monetag',
+  format: 'Official Monetag Rewarded Interstitial SDK',
 
-  // Format iklan aktif: Fullscreen Rewarded Video
-  format: 'Fullscreen Rewarded Video',
+  // Zone ID resmi Interstitial Monetag Anda
+  zoneId: '12252049',
 
-  // URL video iklan yang diputar di fullscreen player (disajikan dari server sendiri agar bebas adblock)
-  videoUrl: '/ad-video.mp4',
-
-  // Durasi wajib menonton iklan video sebelum credit diberikan (detik)
+  // Durasi wajib menonton iklan (detik)
   durationSeconds: 10,
 
-  // Apakah otomatis langsung memproses data setelah durasi video selesai
+  // Fallback video jika ad server kosong
+  videoUrl: '/ad-video.mp4',
+
+  // Otomatis memproses data setelah reward selesai
   autoStartOnReward: true,
 
-  // URL Direct Link / Smartlink Monetag (opsional jika pengguna klik banner sponsor di dalam video)
   directLinkUrl: 'https://monetag.com',
-
-  // Zone ID resmi Monetag
-  zoneId: '12252177',
-  vignetteZoneId: '12252049',
 }

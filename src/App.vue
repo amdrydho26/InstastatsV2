@@ -5,9 +5,19 @@ import { ScrollToPlugin } from 'gsap/ScrollToPlugin'
 import { compareInstagramData, extractAccountsFromJson, extractAccountsFromHtml } from './instagramParser.js'
 import { extractInstagramZip } from './zipInstagram.js'
 import { AD_CONFIG } from './adConfig.js'
+import createAdHandler from 'monetag-tg-sdk'
 
 gsap.registerPlugin(ScrollToPlugin)
 gsap.config({ nullTargetWarn: false })
+
+let monetagAdHandler = null
+if (typeof window !== 'undefined') {
+  try {
+    monetagAdHandler = createAdHandler(AD_CONFIG.zoneId || '12252049')
+  } catch (err) {
+    console.warn('Monetag SDK init:', err)
+  }
+}
 
 // ─── Storage & Pagination Constants ───────────────────────────────────────────
 
@@ -433,7 +443,21 @@ function closeAdModal() {
 function handleCompareClick() {
   if (!canProcess.value) return
   if (userCredits.value <= 0) {
-    startRewardedAd()
+    if (monetagAdHandler) {
+      monetagAdHandler()
+        .then(() => {
+          userCredits.value = 1
+          saveToStorage()
+          nextTick(() => {
+            processData()
+          })
+        })
+        .catch(() => {
+          startRewardedAd()
+        })
+    } else {
+      startRewardedAd()
+    }
     return
   }
   processData()
