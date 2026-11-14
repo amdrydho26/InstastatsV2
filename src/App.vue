@@ -937,7 +937,6 @@ function formatDate(timestamp) {
               :href="AD_CONFIG.directLinkUrl"
               target="_blank"
               rel="noopener noreferrer"
-              @click="openSponsorLink"
             >
               Buka Halaman Sponsor Monetag ↗
             </a>
