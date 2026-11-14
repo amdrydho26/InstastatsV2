@@ -241,8 +241,8 @@ function playSplashAnimation(onComplete) {
       return
     }
 
-    // Reset styles on splash element and children so re-running animates properly
-    gsap.set(splash.value, { display: 'flex', yPercent: 0, opacity: 1 })
+    // Kembalikan splash ke style asli (CSS display: grid) agar tidak berantakan
+    gsap.set(splash.value, { clearProps: 'all' })
     gsap.set('.splash-progress span', { width: '0%' })
     if (appRoot.value) {
       gsap.set(appRoot.value, { opacity: 0 })
@@ -274,7 +274,7 @@ function playSplashAnimation(onComplete) {
       .set(showSplash, { value: false })
       .add(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }))
       .to(appRoot.value, { opacity: 1, duration: 0.42 }, '-=0.2')
-      .fromTo('.hero-kicker, .hero-title, .hero-text, .hero-cta', { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, stagger: 0.07 }, '-=0.22')
+      .fromTo('.hero-kicker, .hero-title, .hero-text', { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, stagger: 0.07 }, '-=0.22')
       .fromTo('.guide-card', { y: 18, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.42, stagger: 0.08 }, '-=0.16')
       .fromTo('.float-card', { y: 24, opacity: 0, rotate: -2 }, { y: 0, opacity: 1, rotate: 0, duration: 0.55, stagger: 0.08 }, '-=0.22')
       .add(() => {
@@ -775,7 +775,6 @@ function formatDate(timestamp) {
               <p>Lihat statistik dan daftar akun berdasarkan kategori pilihan.</p>
             </article>
           </div>
-          <a class="primary-link hero-cta" href="#pilih" @pointerdown="press('.hero-cta')" @click.prevent="smoothScroll('#pilih')">Mulai cek</a>
         </div>
 
         <div class="hero-preview" aria-hidden="true">
