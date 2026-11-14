@@ -355,24 +355,25 @@ async function readZip(event) {
   }
 }
 
-// ─── Rewarded Ad & Credit Handlers ────────────────────────────────────
+// ─── Rewarded Ad & Credit Handlers (Solusi A: Direct Link) ────────────
+
+function openSponsorLink() {
+  if (AD_CONFIG.directLinkUrl && typeof window !== 'undefined') {
+    window.open(AD_CONFIG.directLinkUrl, '_blank', 'noopener,noreferrer')
+  }
+}
 
 function startRewardedAd() {
   adTimeRemaining.value = AD_CONFIG.durationSeconds
   adProgressPercent.value = 0
   showAdModal.value = true
 
-  // Muat skrip Vignette Banner Monetag secara dinamis HANYA saat tombol ditekan
-  if (typeof document !== 'undefined') {
-    if (!document.getElementById('monetag-vignette-script')) {
-      const s = document.createElement('script')
-      s.id = 'monetag-vignette-script'
-      s.dataset.zone = AD_CONFIG.zoneId || '12252049'
-      s.src = 'https://n6wxm.com/vignette.min.js'
-      s.onerror = () => {
-        isAdBlocked.value = true
-      }
-      document.body.appendChild(s)
+  // Solusi A: Buka tab iklan Monetag Direct Link secara langsung saat tombol ditekan
+  if (AD_CONFIG.directLinkUrl && typeof window !== 'undefined') {
+    try {
+      window.open(AD_CONFIG.directLinkUrl, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      console.warn('Pop-up window diblokir browser:', e)
     }
   }
 
@@ -880,7 +881,7 @@ function formatDate(timestamp) {
       </section>
     </main>
 
-    <!-- ─── REWARDED AD MODAL (MONETAG VIGNETTE INTERSTITIAL) ────────────── -->
+    <!-- ─── REWARDED AD MODAL (SOLUSI A: MONETAG DIRECT ADS) ────────────── -->
     <Teleport to="body">
       <div
         v-if="showAdModal"
@@ -899,34 +900,23 @@ function formatDate(timestamp) {
           </div>
 
           <h3 id="ad-modal-title" class="ad-title">
-            <template v-if="adTimeRemaining > 0">Menampilkan Iklan Sponsor</template>
+            <template v-if="adTimeRemaining > 0">Membuka Materi Sponsor</template>
             <template v-else>Durasi Selesai! Credit Siap Digunakan</template>
           </h3>
 
           <p class="ad-desc">
             <template v-if="adTimeRemaining > 0">
-              Mohon tunggu {{ adTimeRemaining }} detik untuk membuka 1x analisis perbandingan followers & following secara gratis.
+              Tab iklan sponsor resmi Monetag telah dibuka. Mohon tunggu {{ adTimeRemaining }} detik untuk membuka 1x analisis perbandingan followers & following secara gratis.
             </template>
             <template v-else>
               Terima kasih! 1 Credit telah berhasil diperoleh. Memulai analisis akun...
             </template>
           </p>
 
-          <!-- AdBlock Notice (jika browser memblokir script Monetag) -->
-          <div v-if="isAdBlocked" class="adblock-notice">
-            <div class="adblock-header">
-              <span class="adblock-icon">🛡️</span>
-              <strong>AdBlock / Pelindung Iklan Terdeteksi</strong>
-            </div>
-            <p>
-              Browser memblokir pemuatan skrip Monetag. Nonaktifkan AdBlock atau Brave Shields agar materi sponsor resmi dapat tampil dengan lancar.
-            </p>
-          </div>
-
-          <!-- Real Visual Sponsor Showcase -->
-          <div v-else class="sponsor-creative-card">
+          <!-- Direct Link Sponsor Showcase -->
+          <div class="sponsor-creative-card">
             <div class="sponsor-creative-top">
-              <span class="sponsor-creative-badge">SPONSOR RESMI MONETAG</span>
+              <span class="sponsor-creative-badge">MONETAG DIRECT ADS</span>
               <span class="sponsor-creative-verified">✓ Partner Terverifikasi</span>
             </div>
 
@@ -937,19 +927,19 @@ function formatDate(timestamp) {
                 </svg>
               </div>
               <div class="sponsor-creative-info">
-                <strong>Penawaran Eksklusif Pengguna InstaStats</strong>
-                <p>Tonton materi sponsor selama {{ adTimeRemaining || 8 }} detik untuk membuka 1 kredit analisis secara instan.</p>
+                <strong>Halaman Sponsor Monetag Aktif</strong>
+                <p>Jika tab iklan belum terbuka otomatis di perangkat Anda, klik tombol di bawah untuk membukanya.</p>
               </div>
             </div>
 
             <a
-              v-if="AD_CONFIG.directLinkUrl && AD_CONFIG.directLinkUrl !== 'https://monetag.com'"
               class="sponsor-creative-btn"
               :href="AD_CONFIG.directLinkUrl"
               target="_blank"
               rel="noopener noreferrer"
+              @click="openSponsorLink"
             >
-              Lihat Penawaran Sponsor ↗
+              Buka Halaman Sponsor Monetag ↗
             </a>
           </div>
 
